@@ -30,7 +30,7 @@ struct ScreenFitTests {
         #expect(longest.size(width: 1080).height * 2 == ScreenFit.portraitPixels.height)
     }
 
-    // 91 点按 UU远程 的工具栏实测（ScreenFit.clientToolbarInset）
+    // 91 点按 UU远程 的工具栏实测（ClientInsets.standard）
     @Test("比例 = 手机屏幕的高宽比扣掉上下各 91 点（远控工具栏）；不知道逻辑宽度按 400 点估")
     func ratio() {
         // 20:9 安卓 1080×2400：2.222 - 182/400 = 1.767
@@ -95,7 +95,7 @@ struct ScreenFitTests {
         }
     }
 
-    // 左右 82+72 点按 UU远程 的工具栏和暗带实测（ScreenFit.clientLandscapeInsets）
+    // 左右 82+72 点按 UU远程 的工具栏和暗带实测（ClientInsets.standard）
     @Test("手机横屏：扣掉左右远控的工具栏和暗带（154 个手机点），取 2 倍门槛里最窄的一档，短边 525")
     func phoneLandscape() {
         let f = ScreenFit(device: DeviceChoice.standard.screen, kind: .phone, orientation: .landscape)
@@ -104,6 +104,24 @@ struct ScreenFitTests {
         #expect(f.size(width: f.baseWidth) == CGSize(width: 957, height: 525))
         #expect(f.size(width: f.baseWidth - 1).height < 525)
         #expect(f.widths.last == 1907)
+    }
+
+    @Test("控制端让位按远控各自声明：默认就是原来的（竖屏上下各 91、横屏左右 154），画面只铺在安全区的远控让得少、屏更长")
+    func clientInsets() {
+        let device = DeviceChoice.standard.screen   // 17 Pro Max：440×956 点
+        #expect(ScreenFit(device: device, kind: .phone, orientation: .portrait, insets: .standard) == ScreenFit.standard)
+        #expect(ScreenFit(device: device, kind: .phone, orientation: .landscape, insets: .standard)
+                == ScreenFit(device: device, kind: .phone, orientation: .landscape))
+        let safeArea = ClientInsets(portraitVertical: 96, landscapeHorizontal: 124, landscapeVertical: 21)
+        let portrait = ScreenFit(device: device, kind: .phone, orientation: .portrait, insets: safeArea)
+        #expect(abs(portrait.ratio - (956.0 - 96) / 440) < 1e-9)
+        #expect(portrait.size(width: 540).height > ScreenFit.standard.size(width: 540).height)
+        let landscape = ScreenFit(device: device, kind: .phone, orientation: .landscape, insets: safeArea)
+        #expect(abs(landscape.ratio - (440.0 - 21) / (956 - 124)) < 1e-9)
+        // 平板、电脑不扣，让位不影响
+        let ipad = DeviceScreen(width: 1640, height: 2360, points: 820)
+        #expect(ScreenFit(device: ipad, kind: .tablet, orientation: .portrait, insets: safeArea)
+                == ScreenFit(device: ipad, kind: .tablet, orientation: .portrait))
     }
 
     @Test("登记给系统时最宽的在前：第一档比像素上限小太多屏不上线（实测 6144×3840 上限下 2 倍高 1050 像素的不上线；机型库每一条见 bundledFits）")

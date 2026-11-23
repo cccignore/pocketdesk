@@ -48,6 +48,17 @@ struct ScreenPlanTests {
         #expect(ScreenPlan.wishes(config: c, remote: false, trusted: false, resident: true).isEmpty)
     }
 
+    @Test("控制端让位交给每块屏的比例：默认和以前一样；换了让位，手机屏的比例跟着变、身份不变")
+    func clientInsets() {
+        let c = config()
+        let safeArea = ClientInsets(portraitVertical: 96, landscapeHorizontal: 124, landscapeVertical: 21)
+        #expect(ScreenPlan.wishes(config: c, remote: remote, trusted: true, insets: .standard) == ScreenPlan.wishes(config: c, remote: remote, trusted: true))
+        let shifted = ScreenPlan.wishes(config: c, remote: remote, trusted: true, insets: safeArea)
+        #expect(shifted[0].fit == ScreenPlan.fit(of: c.screens[0], insets: safeArea))
+        #expect(shifted[0].fit != ScreenPlan.fit(of: c.screens[0]))
+        #expect(shifted[0].spec == ScreenPlan.spec(of: c.screens[0]))
+    }
+
     @Test("类别 → 行为：手机、平板是触屏，电脑不是；手势总开关不改行为（翻不翻译由界面层按开关定）")
     func behavior() {
         #expect(ScreenPlan.behavior(.phone) == .touchScreen)

@@ -14,13 +14,17 @@ public struct RemoteIdentity: Equatable, Sendable {
     public let injector: InjectedEventSource
     /// 只在启动时读一次显示器列表、之后加的屏看不到：装着它时 Snug 的屏常驻（见 ScreenPlan），它要在屏建好之后启动
     public let readsDisplaysOnce: Bool
+    /// 它在手机上压住画面的部分：手机屏按它让位（见 ScreenFit）
+    public let clientInsets: ClientInsets
 
-    public init(logName: String, displayName: String, bundleIDs: Set<String>, injector: InjectedEventSource, readsDisplaysOnce: Bool = false) {
+    public init(logName: String, displayName: String, bundleIDs: Set<String>, injector: InjectedEventSource, readsDisplaysOnce: Bool = false,
+                clientInsets: ClientInsets = .standard) {
         self.logName = logName
         self.displayName = displayName
         self.bundleIDs = bundleIDs
         self.injector = injector
         self.readsDisplaysOnce = readsDisplaysOnce
+        self.clientInsets = clientInsets
     }
 }
 

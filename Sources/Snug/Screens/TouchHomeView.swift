@@ -100,7 +100,7 @@ struct TouchHomeView: View {
                 case nil:
                     if geo.size.width > geo.size.height { split(width: geo.size.width) } else { home }
                 }
-                if let busy = BusyView.Content(panel.work, catalog: catalog, screen: config) {
+                if let busy = BusyView.Content(panel.work, catalog: catalog, screen: config, insets: state.clientInsets) {
                     BusyView(content: busy).transition(.opacity)
                 }
             }
@@ -516,7 +516,7 @@ private struct BusyView: View {
         let status: String
 
         @MainActor
-        init?(_ work: Desk.Work?, catalog: AppCatalog, screen: ScreenConfig?) {
+        init?(_ work: Desk.Work?, catalog: AppCatalog, screen: ScreenConfig?, insets: ClientInsets) {
             switch work {
             case .opening(let app):
                 (art, title, subtitle, status) = (.icon(catalog.icon(for: app)), app.name, nil, "正在打开")
@@ -525,7 +525,7 @@ private struct BusyView: View {
                                                   window.title.isEmpty ? nil : window.title, "正在打开")
             case .reshaping:
                 (art, title, subtitle, status) = (.symbol(screen?.symbol ?? "iphone"), screen?.device.displayName ?? "",
-                                                  screen?.sizeText, "正在调整屏幕比例")
+                                                  screen?.sizeText(insets), "正在调整屏幕比例")
             case .dismissing:
                 (art, title, subtitle, status) = (.symbol(TouchHomeView.dismissSymbol), screen?.name ?? "", nil, "正在退出")
             default:

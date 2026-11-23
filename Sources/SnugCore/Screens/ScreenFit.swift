@@ -1,7 +1,7 @@
 // 屏幕适配：屏的比例跟着型号、方向和类别走，宽度跟着屏上的窗口走（docs/how-it-works.md「屏幕适配」）。
-// 比例：把型号的屏幕按这块屏的方向摆好，扣掉远控在这个方向上压住画面的部分。让位都按 UU 实测标定：
-// 建屏早于知道是哪家远控来连（常驻的主屏甚至不等远程），没法按家给，接别家时实测再调：
-// - 手机竖屏：UU 把画面等比缩放、居中铺在手机上，上下压掉 clientToolbarInset（17 Pro Max 上是 540×950，真机调出来的）
+// 比例：把型号的屏幕按这块屏的方向摆好，扣掉远控在这个方向上压住画面的部分（ClientInsets）。
+// 建屏早于知道是哪家远控来连（常驻的主屏甚至不等远程），只能按装着的远控给（AppController），默认按 UU 实测标定：
+// - 手机竖屏：UU 把画面等比缩放、居中铺在手机上，上下压掉 ClientInsets.standard 的工具栏（17 Pro Max 上是 540×950，真机调出来的）
 // - 手机横屏：UU 的工具栏在右边压一条，左边（灵动岛那侧）压一条暗带，上下不压（V6，11-17 主人定扣左右）
 // - 平板：UU 铺满、不压，横竖都不扣（V6）
 // - 电脑：UU 全屏时等比缩小、四周留黑边，不挡东西；有刘海的 MacBook 扣掉顶上那一条，画面正好一像素对一像素（V6）
@@ -31,11 +31,6 @@ public struct ScreenFit: Equatable, Sendable, CustomStringConvertible {
     /// 横屏框得住 6K 的 3008×1692 的 2 倍（V5：新身份当场上线）
     public static let portraitPixels = CGSize(width: 2160, height: 4320)
     public static let landscapePixels = CGSize(width: 6144, height: 3840)
-    /// 手机竖屏画面上下各让出的高度（点）。UU 底部工具栏 17 Pro Max 实测约 268 像素（89 点）；取 91 让 17 Pro Max 正好是
-    /// 真机上调好的 540×950（取 89 是 540×955），多出的 2 点当余量
-    static let clientToolbarInset: Double = 91
-    /// 手机横屏左右让出的宽度（手机的点）：右边 UU 的工具栏约 82，左边（灵动岛那侧）的暗带约 72（V6 第一轮实测粗估，待截图量准）
-    static let clientLandscapeInsets: Double = 82 + 72
     /// 不知道逻辑分辨率时（安卓、自己填的）按这个估短边：安卓手机默认显示大小下常见 360–412dp，平板 800dp 上下
     static let assumedPhonePoints: Double = 400
     static let assumedTabletPoints: Double = 800
@@ -60,15 +55,17 @@ public struct ScreenFit: Equatable, Sendable, CustomStringConvertible {
     public static let standard = ScreenFit(device: DeviceChoice.standard.screen, kind: .phone, orientation: .portrait)
 
     /// 按型号、类别和这块屏的方向算
-    public init(device: DeviceScreen, kind: DeviceKind, orientation: Orientation) {
+    /// insets：远控在手机上压住画面的部分，只对手机屏有效（平板、电脑的远控都铺满或等比缩小、不压东西）
+    public init(device: DeviceScreen, kind: DeviceKind, orientation: Orientation, insets: ClientInsets = .standard) {
         let short = Double(device.width), long = Double(device.height)
         switch (kind, orientation) {
         case (.phone, .portrait):
             let points = device.points.map(Double.init) ?? Self.assumedPhonePoints
-            self.init(ratio: long / short - 2 * Self.clientToolbarInset / points)
+            self.init(ratio: long / short - insets.portraitVertical / points)
         case (.phone, .landscape):
             let points = device.points.map(Double.init) ?? Self.assumedPhonePoints
-            self.init(ratio: points / (long * points / short - Self.clientLandscapeInsets), orientation: .landscape, width: nil)
+            self.init(ratio: (points - insets.landscapeVertical) / (long * points / short - insets.landscapeHorizontal),
+                      orientation: .landscape, width: nil)
         case (.tablet, _):
             let points = device.points.map(Double.init) ?? Self.assumedTabletPoints
             let across = orientation == .portrait ? points : long * points / short
@@ -148,4 +145,25 @@ extension TouchRegion {
     public init(screen bounds: CGRect, closeButton: CloseButton? = nil) {
         self.init(frame: bounds, scale: ScreenFit.scale(screen: bounds.size), closeButton: closeButton)
     }
+}
+
+/// 远控在手机上压住画面的部分（手机的点）：Snug 的手机屏按它让位，比例才和手机上显示画面的那一块一样，不留黑边。
+/// 每家远控在身份里声明自己的（RemoteIdentity.clientInsets），默认是 UU 实测的
+public struct ClientInsets: Hashable, Sendable {
+    /// 竖屏上下一共让出的高度
+    public var portraitVertical: Double
+    /// 横屏左右一共让出的宽度
+    public var landscapeHorizontal: Double
+    /// 横屏上下一共让出的高度
+    public var landscapeVertical: Double
+
+    public init(portraitVertical: Double, landscapeHorizontal: Double, landscapeVertical: Double) {
+        self.portraitVertical = portraitVertical
+        self.landscapeHorizontal = landscapeHorizontal
+        self.landscapeVertical = landscapeVertical
+    }
+
+    /// UU 实测：竖屏底部工具栏 17 Pro Max 约 268 像素（89 点），上下各取 91，让 17 Pro Max 正好是真机上调好的 540×950
+    /// （取 89 是 540×955，多出的 2 点当余量）；横屏右边工具栏约 82、左边（灵动岛那侧）暗带约 72（V6 第一轮实测粗估），上下不压
+    public static let standard = ClientInsets(portraitVertical: 2 * 91, landscapeHorizontal: 82 + 72, landscapeVertical: 0)
 }

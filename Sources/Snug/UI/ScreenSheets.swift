@@ -120,7 +120,7 @@ struct ScreenDetailSheet: View {
                 StatusTile(MacTokens.IconTile.screen(symbol: screen.symbol))
                 VStack(alignment: .leading, spacing: MacTokens.Space.xxs) {
                     Text(screen.name).font(.headline)
-                    Text("\(screen.device.kind.title) · \(screen.sizeText)").foregroundStyle(.secondary)
+                    Text("\(screen.device.kind.title) · \(screen.sizeText(state.clientInsets))").foregroundStyle(.secondary)
                 }
             }
             Form {

@@ -22,7 +22,7 @@ extension AppController: AppIntents {
             if added == nil { Log.warn("屏幕列表已有 \(ScreenConfig.limit) 块，不再加") }
             return
         }
-        Log.info("新屏「\(added.name)」\(ScreenPlan.fit(of: added))，序列号 \(added.serials.map(String.init).joined(separator: "/"))")
+        Log.info("新屏「\(added.name)」\(ScreenPlan.fit(of: added, insets: state.clientInsets))，序列号 \(added.serials.map(String.init).joined(separator: "/"))")
         applyPlan()
     }
 
@@ -32,7 +32,7 @@ extension AppController: AppIntents {
     }
 
     func setScreenDevice(_ id: ScreenID, _ device: DeviceChoice) {
-        let fit = ScreenPlan.fit(device, state.screen(id)?.orientation ?? .portrait)
+        let fit = ScreenPlan.fit(device, state.screen(id)?.orientation ?? .portrait, insets: state.clientInsets)
         editScreen(id, "型号 → \(device.title)（\(fit)）") { $0.device = device }
     }
 

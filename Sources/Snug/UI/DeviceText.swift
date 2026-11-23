@@ -49,9 +49,9 @@ extension ScreenConfig {
     /// 列表里名字下面那一行：「竖 · iPhone 17 Pro Max」
     var summary: String { "\(orientation.title) · \(device.displayName)" }
     var symbol: String { device.kind.symbol(orientation) }
-    /// 屏上的点数（基准那一档）：「950 × 660 点」
-    var sizeText: String {
-        let fit = ScreenPlan.fit(of: self)
+    /// 屏上的点数（基准那一档）：「950 × 660 点」。insets：远控在手机上压住画面的部分（AppState.clientInsets）
+    func sizeText(_ insets: ClientInsets) -> String {
+        let fit = ScreenPlan.fit(of: self, insets: insets)
         let size = fit.size(width: fit.baseWidth)
         return "\(Int(size.width)) × \(Int(size.height)) 点"
     }

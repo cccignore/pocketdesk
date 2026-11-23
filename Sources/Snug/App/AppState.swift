@@ -42,6 +42,8 @@ final class AppState {
     var legacyAppRunning = false
     /// 比 Snug 此刻在线的屏先启动、看不到这些屏的远控（只在启动时读一次显示器的那种），界面名。菜单栏给「重启」
     var staleRemotes: [String] = []
+    /// 远控在手机上压住画面的部分：手机屏按它让位（按装着的远控定，见 AppController.refreshInstalled）
+    var clientInsets = ClientInsets.standard
     /// 正在退出收尾
     var quitting = false
     /// 应用内更新：查到了什么、进行到哪（Updater 写）

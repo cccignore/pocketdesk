@@ -203,7 +203,7 @@ final class AppController: Sendable {
     /// 按此刻的配置和会话算出要哪些屏，交给 DeskSet（结论没变就什么都不做）
     func applyPlan() {
         desks.setWishes(ScreenPlan.wishes(config: store.config, remote: session.inEpisode, trusted: state.accessibilityTrusted,
-                                          preview: preview, resident: resident))
+                                          preview: preview, resident: resident, insets: state.clientInsets))
     }
 
     /// 只在启动时读一次显示器的远控，启动得比 Snug 此刻在线的屏晚才看得到它们。开机时两个都自动打开，谁先谁后说不准：
@@ -247,6 +247,15 @@ final class AppController: Sendable {
                 syncGestures()
             }
             Log.info("装着的远控：\(names.isEmpty ? "没有" : names.joined(separator: "、"))（手势只接管这几家）")
+        }
+        // 让位：装着的几家说法一致就用它的；一家没装、或者几家各说各的（同时装着 UU 和 CrossDesk），按 UU 实测的默认
+        let claimed = Set(installed.map(\.identity.clientInsets))
+        let insets = claimed.count == 1 ? claimed.first ?? .standard : .standard
+        if insets != state.clientInsets {
+            state.clientInsets = insets
+            Log.info("手机屏让位改为竖屏上下共 \(Int(insets.portraitVertical))、横屏左右共 \(Int(insets.landscapeHorizontal))、横屏上下共 \(Int(insets.landscapeVertical)) 点"
+                     + (claimed.count > 1 ? "（装着的远控让位不一致，按默认）" : ""))
+            applyPlan()
         }
         let needing = installed.map(\.identity).filter(\.readsDisplaysOnce)
         guard needing.isEmpty == resident else { return }

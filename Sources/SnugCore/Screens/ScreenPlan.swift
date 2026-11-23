@@ -12,12 +12,13 @@ import Foundation
 public enum ScreenPlan {
     /// 此刻要的屏，按屏幕列表的顺序。remote：在不在远程（含断开后等重连的那段），不在远程时只要设为主屏的那块；
     /// trusted：没有辅助功能权限放不了窗口、翻译不了手势，一块都不建；preview：不等远程，建出所有开着的屏（--preview-screens）；
-    /// resident：常驻，不等远程，建出所有开着的屏
-    public static func wishes(config: AppConfig, remote: Bool, trusted: Bool, preview: Bool = false, resident: Bool = false) -> [ScreenWish] {
+    /// resident：常驻，不等远程，建出所有开着的屏；insets：远控在手机上压住画面的部分（按装着的远控定，见 AppController）
+    public static func wishes(config: AppConfig, remote: Bool, trusted: Bool, preview: Bool = false, resident: Bool = false,
+                              insets: ClientInsets = .standard) -> [ScreenWish] {
         guard trusted else { return [] }
         let shown = config.screens.filter(\.enabled).prefix(ScreenConfig.limit)
         return shown.filter { remote || preview || resident || $0.id == config.mainScreen }.map { screen in
-            ScreenWish(id: screen.id, spec: spec(of: screen), fit: fit(of: screen), behavior: behavior(screen.device.kind),
+            ScreenWish(id: screen.id, spec: spec(of: screen), fit: fit(of: screen, insets: insets), behavior: behavior(screen.device.kind),
                        main: config.mainScreen == screen.id, resident: resident)
         }
     }
@@ -30,11 +31,13 @@ public enum ScreenPlan {
     }
 
     /// 配置里的一项 → 比例和档位
-    public static func fit(of screen: ScreenConfig) -> ScreenFit { fit(screen.device, screen.orientation) }
+    public static func fit(of screen: ScreenConfig, insets: ClientInsets = .standard) -> ScreenFit {
+        fit(screen.device, screen.orientation, insets: insets)
+    }
 
     /// 这台设备、这个方向的比例和档位（换型号时先算出来记日志）
-    public static func fit(_ device: DeviceChoice, _ orientation: Orientation) -> ScreenFit {
-        ScreenFit(device: device.screen, kind: device.kind, orientation: orientation)
+    public static func fit(_ device: DeviceChoice, _ orientation: Orientation, insets: ClientInsets = .standard) -> ScreenFit {
+        ScreenFit(device: device.screen, kind: device.kind, orientation: orientation, insets: insets)
     }
 
     /// 类别 → 行为（哪些类别算触屏见 DeviceKind.isTouch）
