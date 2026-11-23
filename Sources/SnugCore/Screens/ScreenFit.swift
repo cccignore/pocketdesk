@@ -38,6 +38,8 @@ public struct ScreenFit: Equatable, Sendable, CustomStringConvertible {
     static let tabletScale: Double = 1.24
     /// 基准宽度下底部小横条的高度（点）
     static let baseHomeBarHeight: CGFloat = 28
+    /// 让出键盘时窗口最少留几成：再少就看不见对话了
+    static let minKeyboardKeep = 0.3
 
     /// 高宽比
     public let ratio: Double
@@ -45,6 +47,8 @@ public struct ScreenFit: Equatable, Sendable, CustomStringConvertible {
     public let baseWidth: Int
     /// 登记的档位：基准宽度到最宽一档，每 10 点一档
     public let widths: [Int]
+    /// 让出键盘时窗口留屏幕上面的几成（手机竖屏、远控声明了键盘多高才有，见 ClientInsets.portraitKeyboard）
+    public var keyboardKeep: Double?
 
     /// 登记给系统时的顺序：最宽的在前。系统按第一档判断这块屏能不能上线，第一档比像素上限小太多时屏建好了却一直不上线
     /// （11-17 实测：上限 6144×3840 时，2 倍高 1050 像素的不上线、1120 的上线）。手机横屏的基准档 957×525 就是这样；
@@ -62,6 +66,9 @@ public struct ScreenFit: Equatable, Sendable, CustomStringConvertible {
         case (.phone, .portrait):
             let points = device.points.map(Double.init) ?? Self.assumedPhonePoints
             self.init(ratio: long / short - insets.portraitVertical / points)
+            // 手机上画面的高度（点），键盘从画面底边往上盖住 portraitKeyboard 这么多；键盘比画面还高时至少留三成
+            let picture = long / short * points - insets.portraitVertical
+            keyboardKeep = insets.portraitKeyboard.map { max(Self.minKeyboardKeep, 1 - $0 / picture) }
         case (.phone, .landscape):
             let points = device.points.map(Double.init) ?? Self.assumedPhonePoints
             self.init(ratio: (points - insets.landscapeVertical) / (long * points / short - insets.landscapeHorizontal),
@@ -156,11 +163,14 @@ public struct ClientInsets: Hashable, Sendable {
     public var landscapeHorizontal: Double
     /// 横屏上下一共让出的高度
     public var landscapeVertical: Double
+    /// 竖屏打字时手机键盘（连同远控加的工具条）从画面底边往上盖住多高。nil = 不知道，不给「让出键盘」
+    public var portraitKeyboard: Double?
 
-    public init(portraitVertical: Double, landscapeHorizontal: Double, landscapeVertical: Double) {
+    public init(portraitVertical: Double, landscapeHorizontal: Double, landscapeVertical: Double, portraitKeyboard: Double? = nil) {
         self.portraitVertical = portraitVertical
         self.landscapeHorizontal = landscapeHorizontal
         self.landscapeVertical = landscapeVertical
+        self.portraitKeyboard = portraitKeyboard
     }
 
     /// UU 实测：竖屏底部工具栏 17 Pro Max 约 268 像素（89 点），上下各取 91，让 17 Pro Max 正好是真机上调好的 540×950

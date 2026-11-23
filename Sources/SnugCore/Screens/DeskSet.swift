@@ -270,6 +270,12 @@ public final class DeskSet {
         lane.run { await desk.matchWidth() }
     }
 
+    /// 小横条上的键盘键：屏上的窗口让出手机键盘的位置，再点一下铺回整屏。这块屏给不了（没声明键盘多高、没放窗口）时什么都不做
+    public func toggleKeyboardRoom(on id: ScreenID) {
+        guard let desk = desks[id], desk.offersKeyboardRoom || desk.state.keyboardRoom else { return }
+        lane.run { await desk.setKeyboardRoom(!desk.state.keyboardRoom) }
+    }
+
     /// 列表左上角的返回键：回到屏上的窗口。换档要一会儿，期间和放窗口一样显示「正在打开」、列表点不了
     public func returnToPlaced(on id: ScreenID) {
         guard let desk = desks[id], let placed = desk.state.placed else { return }

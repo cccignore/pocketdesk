@@ -25,6 +25,8 @@ public final class Desk {
         public var work: Work?
         /// 要让用户知道的事，下一个动作开始时、或这次远程结束时清掉
         public var notice: Notice?
+        /// 屏上的窗口让出手机键盘的位置：只铺到键盘上方（输入框露在键盘上面），见 Desk.setKeyboardRoom
+        public var keyboardRoom = false
         /// 屏上那个窗口的关闭按钮（铺好后读的）。在手机上点它不直接关，先放回原位再关（见 DeskSet.closePlaced）。
         /// 在问用户的窗口（挂着「要存储吗」）不给：那时按钮是灰的，点它是想答对话框
         public var closeButton: CloseButton?
@@ -115,7 +117,11 @@ public final class Desk {
     private var placement: Placement? {
         didSet {
             state.placed = placement.map { Placed(window: $0.window, zoom: $0.record.zoom) }
-            if placement?.window.key != oldValue?.window.key { state.closeButton = nil }
+            if placement?.window.key != oldValue?.window.key {
+                state.closeButton = nil
+                // 换了窗口、窗口放回去了：新的窗口铺满整屏
+                state.keyboardRoom = false
+            }
         }
     }
     /// 发过几个号、排着没做的号、正在做的事（见 Ticket）
@@ -202,7 +208,28 @@ public final class Desk {
     private func showWork() { state.work = running ?? queued.first?.work }
 
     func setNotice(_ notice: Notice?) { state.notice = notice }
-    func showListNow() { state.listVisible = true }
+    func showListNow() {
+        state.listVisible = true
+        guard state.keyboardRoom else { return }
+        // 回列表就不再让着键盘：换回让位前那一档，忘掉让位时铺完的样子，露出来时按整屏重新铺
+        state.keyboardRoom = false
+        placement?.leaveKeyboardRoom()
+        placement?.settled = nil
+    }
+
+    /// 能不能让出键盘：手机竖屏、远控声明了键盘多高、屏上放着窗口
+    var offersKeyboardRoom: Bool { behavior.touch && screenFit.keyboardKeep != nil && placement != nil }
+
+    /// 让出键盘、铺回整屏（小横条上的键盘键）。窗口按新的区域重新铺：App 自己重排，输入框落在键盘上方。
+    /// 窗口的最小高度放不下时照常换宽一档（fill），铺回整屏时换回让位前那一档
+    func setKeyboardRoom(_ on: Bool) async {
+        guard on != state.keyboardRoom, !on || offersKeyboardRoom, var p = placement else { return }
+        state.keyboardRoom = on
+        if on { p.widthBeforeKeyboard = p.width } else { p.leaveKeyboardRoom() }
+        Log.info("\(p.window.label) \(on ? "让出键盘的位置，只铺到键盘上方" : "铺回整屏")")
+        await fill(&p)
+        placement = p
+    }
 
     /// 屏幕模块里这块屏的状态变了。新屏从干净的提示开始：没屏时轮到的动作（比如盯着的退出排进队的放对话框）会留下提示
     func screenChanged(_ screen: ScreenSet.State) {
@@ -403,7 +430,7 @@ public final class Desk {
     @discardableResult
     private func fill(_ p: inout Placement) async -> CGRect? {
         await screens.setWidth(id, p.width)
-        guard let area = screens.windowArea(id, withHomeBar: true), let got = await moveOnto(p.window, area) else { return nil }
+        guard let area = fillArea(), let got = await moveOnto(p.window, area) else { return nil }
         p.settled = got
         // App 关窗时存下的就是这个大小：窗口在 Snug 之外没了，凭它认出回来的是不是它
         p.record.filled = got
@@ -413,13 +440,23 @@ public final class Desk {
         } else {
             state.closeButton = await windows.closeButton(p.window.key).map { CloseButton(frame: $0, window: p.window.key.id, windowFrame: got) }
         }
-        // 原点已落在区域上（moveOnto），尺寸大于区域就是被 App 的最小尺寸夹住了
+        // 原点已落在区域上（moveOnto），尺寸大于区域就是被 App 的最小尺寸夹住了。让出键盘时也换：
+        // 窗口顶不到菜单栏底下（系统把顶边夹在菜单栏下沿），不换宽，输入框下半截就压在键盘底下
         guard let current = screens.width(id) else { return got }
         let width = screenFit.width(toFit: got.size, in: area.size, at: current)
         guard width > current, width != p.width else { return got }
         Log.info("\(p.window.label) 在 \(current) 宽的屏上铺不满（App 限定了最小尺寸，实际 \(got.short)），换到 \(width) 宽")
         p.width = width
         return await fill(&p)
+    }
+
+    /// 窗口铺的区域：可放区域（扣掉菜单栏、小横条）；让出键盘时底边收到键盘上方
+    private func fillArea() -> CGRect? {
+        guard var area = screens.windowArea(id, withHomeBar: true) else { return nil }
+        if state.keyboardRoom, let keep = screenFit.keyboardKeep, let bounds = screens.bounds(id) {
+            area.size.height = max(1, min(area.height, bounds.minY + bounds.height * keep - area.minY).rounded(.down))
+        }
+        return area
     }
 
     /// 挪上这块屏，原点落不到区域上就交回 nil，不把留在别处的窗口当成放上了。有些 App 的窗口从远处的屏（如主屏右下方的屏）
@@ -483,9 +520,12 @@ public final class Desk {
         }
         state.notice = .reshaped
         guard var p = placement else { return }
-        // 窗口要的档位按新比例从基准宽度重新找；忘掉上次挪完的样子，露出来时一定重新铺
+        // 窗口要的档位按新比例从基准宽度重新找；忘掉上次挪完的样子，露出来时一定重新铺。
+        // 新比例未必声明键盘多高（换成了别家远控），不再让着键盘
         p.width = screenFit.baseWidth
         p.settled = nil
+        p.widthBeforeKeyboard = nil
+        state.keyboardRoom = false
         if !state.listVisible {
             Log.info("换了比例，\(p.window.label) 按新比例重新铺满")
             await fill(&p)
@@ -804,4 +844,12 @@ private struct Placement {
     var known: Set<WindowKey> = []
     /// 在问用户的窗口（挂着「要存储吗」）：不调字号，也不拦它的关闭按钮
     var asking = false
+    /// 让出键盘前用的那一档：让位时最小高度放不下会换宽，铺回整屏时换回来
+    var widthBeforeKeyboard: Int?
+
+    /// 不再让着键盘：换回让位前那一档
+    mutating func leaveKeyboardRoom() {
+        if let widthBeforeKeyboard { width = widthBeforeKeyboard }
+        widthBeforeKeyboard = nil
+    }
 }

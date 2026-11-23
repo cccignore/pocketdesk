@@ -84,6 +84,7 @@ final class OneScreen {
         var closing: Set<WindowKey> = []
         var dismissed = false
         var closeButton: CloseButton?
+        var keyboardRoom = false
         var display: DisplayID? { screen.display }
     }
 
@@ -118,7 +119,8 @@ final class OneScreen {
         let s = desks.state
         let d = s.desks[id] ?? Desk.State()
         return State(screen: d.screen, placed: d.placed, listVisible: d.listVisible, work: d.work, notice: d.notice,
-                     quitting: s.quitting, closing: s.closing, dismissed: s.dismissed.contains(id), closeButton: d.closeButton)
+                     quitting: s.quitting, closing: s.closing, dismissed: s.dismissed.contains(id), closeButton: d.closeButton,
+                     keyboardRoom: d.keyboardRoom)
     }
 
     var wish: ScreenWish { ScreenWish(id: id, spec: phoneSpec, fit: fit, behavior: .touchScreen) }
@@ -142,6 +144,7 @@ final class OneScreen {
     func closePlaced(window: UInt32) { desks.closePlaced(window: window) }
     func dismissNotice() { desks.dismissNotice(on: id) }
     func showList() { desks.showList(on: id) }
+    func toggleKeyboardRoom() { desks.toggleKeyboardRoom(on: id) }
     func returnToPlaced() { desks.returnToPlaced(on: id) }
     func putBack() { desks.putBack(on: id) }
     func zoom(by delta: Int) { desks.zoom(by: delta, on: id) }

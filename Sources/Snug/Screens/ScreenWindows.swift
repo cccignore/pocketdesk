@@ -123,6 +123,10 @@ final class ScreenWindows {
         homeBarView?.showsCamera = state.config.screenshot
 
         let showList = panel.listVisible || panel.placed == nil
+        // 键盘键：屏上放着窗口、竖屏、远控声明了键盘多高（ClientInsets.portraitKeyboard）才有
+        homeBarView?.showsKeyboard = !showList && panel.behavior.touch && state.clientInsets.portraitKeyboard != nil
+            && state.screen(id)?.orientation == .portrait
+        homeBarView?.keyboardOn = panel.keyboardRoom
         let watching = state.watching(id)
         if showList { list.orderFrontRegardless() } else { list.orderOut(nil) }
         // 手机离开了就关掉搜索、型号页，交还键盘：不然在主屏上打的字会进到看不见的输入框
@@ -204,6 +208,7 @@ final class ScreenWindows {
         let bar = HomeBarView()
         bar.onActivate = { [weak self] in self?.intents.showList() }
         bar.onCapture = { [weak self] in self?.intents.takeScreenshot() }
+        bar.onKeyboard = { [weak self] in self?.intents.toggleKeyboardRoom() }
         homeBar = TouchPanel(content: bar)
         homeBarView = bar
     }
@@ -274,7 +279,8 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
 }
 
 /// 底部小横条：点一下，或者往上滑，回到 App 资源库。中间是 SF Symbols 的 chevron.compact.up；
-/// 开着截图键时左边多一个相机键（camera.viewfinder），点左边这一段是截图。
+/// 开着截图键时左边多一个相机键（camera.viewfinder），点左边这一段是截图；
+/// 远控的键盘会盖住画面底下时右边多一个键盘键（keyboard），点右边这一段是让出键盘 / 铺回整屏。
 /// 屏换到更宽的一档时跟着放大（scale），在手机上看着、点着、滑着都和基准宽度一样
 final class HomeBarView: NSView {
     /// 基准宽度下往上滑过这么多点算数
@@ -282,6 +288,7 @@ final class HomeBarView: NSView {
 
     var onActivate: (() -> Void)?
     var onCapture: (() -> Void)?
+    var onKeyboard: (() -> Void)?
     /// 这一档比基准宽度宽几倍（ScreenFit.scale）
     var scale: CGFloat = 1 {
         didSet { if scale != oldValue { updateIcons() } }
@@ -290,8 +297,17 @@ final class HomeBarView: NSView {
     var showsCamera = false {
         didSet { camera.isHidden = !showsCamera }
     }
+    /// 屏上的窗口能让出键盘的位置
+    var showsKeyboard = false {
+        didSet { keyboard.isHidden = !showsKeyboard }
+    }
+    /// 正让着键盘：图标换成「收起」的样子
+    var keyboardOn = false {
+        didSet { if keyboardOn != oldValue { updateIcons() } }
+    }
     private let grabber = NSImageView()
     private let camera = NSImageView()
+    private let keyboard = NSImageView()
     private var swipe: CGFloat = 0
 
     override init(frame: NSRect) {
@@ -302,6 +318,10 @@ final class HomeBarView: NSView {
         camera.imageScaling = .scaleNone
         camera.isHidden = true
         addSubview(camera)
+        keyboard.contentTintColor = .secondaryLabelColor
+        keyboard.imageScaling = .scaleNone
+        keyboard.isHidden = true
+        addSubview(keyboard)
         grabber.translatesAutoresizingMaskIntoConstraints = false
         addSubview(grabber)
         NSLayoutConstraint.activate([
@@ -318,15 +338,24 @@ final class HomeBarView: NSView {
             .withSymbolConfiguration(.init(pointSize: 22 * scale, weight: .semibold))
         camera.image = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: "截图")?
             .withSymbolConfiguration(.init(pointSize: 20 * scale, weight: .semibold))
+        keyboard.image = NSImage(systemSymbolName: keyboardOn ? "keyboard.chevron.compact.down" : "keyboard",
+                                 accessibilityDescription: keyboardOn ? "铺回整屏" : "让出键盘")?
+            .withSymbolConfiguration(.init(pointSize: 20 * scale, weight: .semibold))
         needsLayout = true
     }
 
     /// 相机键的点击范围：左边整条高、一个手指宽（图标只有二十几点）。图标摆在它正中
     private var cameraArea: NSRect { NSRect(x: 0, y: 0, width: TouchTokens.Size.touchTarget * scale, height: bounds.height) }
+    /// 键盘键的点击范围：右边整条高、一个手指宽
+    private var keyboardArea: NSRect {
+        let width = TouchTokens.Size.touchTarget * scale
+        return NSRect(x: bounds.width - width, y: 0, width: width, height: bounds.height)
+    }
 
     override func layout() {
         super.layout()
         camera.frame = cameraArea
+        keyboard.frame = keyboardArea
     }
 
     override var isOpaque: Bool { true }
@@ -348,7 +377,13 @@ final class HomeBarView: NSView {
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         guard bounds.contains(point) else { return }
-        if showsCamera, cameraArea.contains(point) { onCapture?() } else { onActivate?() }
+        if showsCamera, cameraArea.contains(point) {
+            onCapture?()
+        } else if showsKeyboard, keyboardArea.contains(point) {
+            onKeyboard?()
+        } else {
+            onActivate?()
+        }
     }
 
     /// 手势翻译把单指上滑变成滚动：手指往上走，滚动量是负的

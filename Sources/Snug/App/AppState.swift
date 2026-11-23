@@ -153,6 +153,8 @@ protocol TouchIntents: AnyObject, Sendable {
     func close(_ window: WindowInfo)
     func dismissNotice()
     func showList()
+    /// 小横条上的键盘键：屏上的窗口让出手机键盘的位置 / 铺回整屏
+    func toggleKeyboardRoom()
     func returnToPlaced()
     func putBack()
     /// 电脑屏资源库里的「还原」：把 Snug 挪过来的这个窗口放回原处

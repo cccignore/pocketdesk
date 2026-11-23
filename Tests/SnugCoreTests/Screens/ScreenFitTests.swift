@@ -124,6 +124,22 @@ struct ScreenFitTests {
                 == ScreenFit(device: ipad, kind: .tablet, orientation: .portrait))
     }
 
+    @Test("让出键盘：远控声明了键盘在手机上盖住多高，竖屏手机按它算出窗口该留键盘上方的几成；没声明、横屏、平板都没有")
+    func keyboardKeep() {
+        let iPhone18Pro = DeviceScreen(width: 1206, height: 2622, points: 402)   // 402×874 点
+        let insets = ClientInsets(portraitVertical: 96, landscapeHorizontal: 124, landscapeVertical: 21, portraitKeyboard: 340)
+        let portrait = ScreenFit(device: iPhone18Pro, kind: .phone, orientation: .portrait, insets: insets)
+        // 画面 874 - 96 = 778 点高，键盘盖住底下 340：留上面 438 / 778
+        #expect(abs((portrait.keyboardKeep ?? 0) - (1 - 340.0 / 778)) < 1e-9)
+        #expect(ScreenFit(device: iPhone18Pro, kind: .phone, orientation: .portrait).keyboardKeep == nil)
+        #expect(ScreenFit(device: iPhone18Pro, kind: .phone, orientation: .landscape, insets: insets).keyboardKeep == nil)
+        #expect(ScreenFit(device: DeviceScreen(width: 1640, height: 2360, points: 820), kind: .tablet, orientation: .portrait,
+                          insets: insets).keyboardKeep == nil)
+        // 键盘比画面还高（自己填的离谱分辨率）：至少留三成
+        let tiny = ScreenFit(device: DeviceScreen(width: 750, height: 1000, points: 375), kind: .phone, orientation: .portrait, insets: insets)
+        #expect(tiny.keyboardKeep == 0.3)
+    }
+
     @Test("登记给系统时最宽的在前：第一档比像素上限小太多屏不上线（实测 6144×3840 上限下 2 倍高 1050 像素的不上线；机型库每一条见 bundledFits）")
     func registrationOrder() {
         let landscape = ScreenFit(device: DeviceChoice.standard.screen, kind: .phone, orientation: .landscape)

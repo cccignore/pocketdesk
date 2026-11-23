@@ -11,8 +11,11 @@ package enum CrossDeskRemote {
     package static let sharingAssertion = "CrossDesk is sharing the desktop"
 
     /// iPhone 客户端把画面等比铺在安全区里，安全区外（灵动岛、底部横条那一条）只有黑底（源码 RemoteSessionView.swift
-    /// 「Fit video and input to the same unobscured area」）。按灵动岛机型的安全区让位：竖屏上 62 下 34，横屏左右各 62、下 21
-    package static let clientInsets = ClientInsets(portraitVertical: 62 + 34, landscapeHorizontal: 62 + 62, landscapeVertical: 21)
+    /// 「Fit video and input to the same unobscured area」）。按灵动岛机型的安全区让位：竖屏上 62 下 34，横屏左右各 62、下 21。
+    /// 它的键盘弹起来不挪画面，直接盖住底下：键盘连同它加的「电脑键盘」工具条从画面底边往上盖住约 340 点
+    /// （模拟器 iPhone 18 Pro 实测：键盘顶在 500 点，画面底边 840 点）
+    package static let clientInsets = ClientInsets(portraitVertical: 62 + 34, landscapeHorizontal: 62 + 62, landscapeVertical: 21,
+                                                   portraitKeyboard: 340)
 
     /// 交给核心的身份：界面和注入是同一个程序，按记号认注入的事件；它只在启动时读一次显示器（源码 screen_capturer_sck_impl.mm），屏要常驻；
     /// 手机上打的字按键码 0 加文字注入（keyboard_capturer.cpp），Mac 的中文输入法会再组一次字，远程期间换英文输入法
