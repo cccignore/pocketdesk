@@ -7,9 +7,10 @@
 // - 不按键的移动拼成一笔（只能是滚动），停手 strokeTimeout 没有新的移动就当松手。每一下都先压着，等下一个事件来了再交：
 //   紧跟着按下的那一下是点按、长按的前导（在点的地方），不是滑动。不压的话它会停掉惯性、让后面的按下补发点击，
 //   滑完马上点时还会让滚动一下跳到点的地方
-// - 相邻两下隔得比 maxStep 远（快甩一下一百多点、丢了几下、两次落指之间），按这几条分（见 continues，场景表 CrossDeskShaperScenarioTests）：
-//   隔了 splitGap 以上才到的是另一个手势（同一笔里相邻两下是 8–17 毫秒）；紧接着到的，上一步看得出方向就看轨迹跟不跟得上；
-//   上一步太短时只有挤在一起到（网络卡住后一起送来）又掉了头才分开，正常节奏到的掉头是同一笔里往回拖；
+// - 相邻两下隔得比 maxStep 远（快甩一下一百多点、丢了几下、两次落指之间），按这几条分（见 continues，场景表 CrossDeskShaperScenarioTests）。
+//   到达的时刻是网络最靠不住的量（丢包、成批到达、卡住后隔几毫秒放出一下），能看轨迹就只看轨迹：
+//   上一步看得出方向，就看这一步跟不跟得上（大致同向、长度不超过上一步几倍）；上一步太短（刚落指、停了一下、慢慢收尾）时，
+//   掉了头的是另一个手势（从静止到一帧走一百多点物理上做不到，不会是同一笔里往回拖），不掉头的才看隔了多久；
 //   前一甩卡住后才到的尾巴（从它终点附近冒出来、还看不出方向）不连到后面跳得远的一下
 // - 到点收尾时，压着的那下属于已经开始的那一笔就交出去（短甩只有两三下，少一下就不滚了），孤零零的一下扔掉
 // - 按下的时刻往前推 holdDelay，还原手指真正落下的时刻：翻译器按 iPhone 的习惯判点击、长按右键、长按选择照旧成立
@@ -26,7 +27,7 @@ package struct CrossDeskShaper: TouchShaper {
     package static let strokeTimeout: TimeInterval = 0.12
     /// 隔得比这远（Snug 屏的点）的下一下要看轨迹才知道是不是同一笔：快甩时一下能有一百多点（60Hz、宽档放大）
     package static let maxStep: CGFloat = 100
-    /// 远处的下一下隔了这么久才到是另一个手势（抬手、再落下）；同一笔里相邻两下是 8–17 毫秒（60–120Hz）
+    /// 上一步看不出方向时，远处的下一下隔了这么久才到是另一个手势（抬手、再落下）；同一笔里相邻两下是 8–17 毫秒（60–120Hz）
     package static let splitGap: TimeInterval = 0.05
     /// 比这还紧挨着到的两下是挤在一起送来的（网络卡住后一起到），比 120Hz 的间隔（8 毫秒）短，看不出原来隔了多久
     static let bunchGap: TimeInterval = 0.005
@@ -99,7 +100,6 @@ package struct CrossDeskShaper: TouchShaper {
         let length = hypot(step.dx, step.dy)
         guard length > Self.maxStep else { return true }
         let gap = event.time - last.time
-        guard gap < Self.splitGap else { return false }
         let bunched = gap < Self.bunchGap
         // 这一笔从哪开始（还没开始时就是 last 这一下），整笔往哪走
         let start = strokeStart ?? last
@@ -113,9 +113,9 @@ package struct CrossDeskShaper: TouchShaper {
                 return Self.cosine(step, before) >= Self.minTurnCosine && length <= Self.maxStepGrowth * beforeLength + Self.maxStep
             }
         }
-        // 上一步太短（停了一下、慢慢收尾）：挤在一起到又掉了头的是卡住后送来的后一甩
-        if bunched, !shapeless, Self.cosine(step, overall) < Self.minTurnCosine { return false }
-        return true
+        // 上一步太短（停了一下、慢慢收尾）：掉了头的是另一个手势（卡住后送来的后一甩）；不掉头的看隔了多久
+        if !shapeless, Self.cosine(step, overall) < Self.minTurnCosine { return false }
+        return gap < Self.splitGap
     }
 
     /// 从 start 开始的这一下或这一笔是前一甩卡住后才到的尾巴：从它终点附近冒出来，收尾后不久（挤在一起到时放宽）

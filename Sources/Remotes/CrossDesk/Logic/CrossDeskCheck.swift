@@ -37,7 +37,7 @@ package enum CrossDeskCheck {
         package var enumerated: [DisplayID]
         /// 此刻在线的 Snug 的屏
         package var onlineSnugDisplays: Set<DisplayID>
-        /// 此刻在线的屏（含 Snug 的），按系统列出的顺序
+        /// 此刻能单独显示的屏（含 Snug 的，不含镜像组里的从属屏），按系统列出的顺序
         package var onlineDisplays: [DisplayID]
         /// 回看的这段时间里，它的日志记了几次远程开始（有控制端连上、开始抓屏）
         package var sessionsInLog: Int
@@ -104,9 +104,11 @@ package enum CrossDeskCheck {
         }
         // 它按启动时登记的几个位置切显示器，编号变了的屏落在原来那块不在了的位置上照样切得到（RegisteredDisplays）
         let unseen = f.onlineSnugDisplays.subtracting(f.enumerated).sorted().map { "#\($0)" }.joined(separator: "、")
-        guard !RegisteredDisplays.misses(f.enumerated, snug: f.onlineSnugDisplays, online: f.onlineDisplays) else {
+        let missing = RegisteredDisplays.missing(f.enumerated, snug: f.onlineSnugDisplays, online: f.onlineDisplays)
+        guard missing.isEmpty else {
+            let list = missing.map { "#\($0)" }.joined(separator: "、")
             return Item(status: .fail, title: title,
-                        detail: "CrossDesk 启动时登记了 \(f.enumerated.count) 块显示器，Snug 的屏 \(unseen) 没落在哪个空出的位置上："
+                        detail: "CrossDesk 启动时登记了 \(f.enumerated.count) 块显示器，Snug 的屏 \(list) 没落在哪个空出的位置上："
                             + "它切不过去（它只在启动时读一次显示器），屏建好之后重启 CrossDesk")
         }
         let list = f.enumerated.map { "#\($0)" }.joined(separator: "、")

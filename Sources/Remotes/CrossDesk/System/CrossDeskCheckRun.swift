@@ -22,7 +22,7 @@ package enum CrossDeskCheckRun {
             signals: CrossDeskSignals(running: !pids.isEmpty, sharing: sharing),
             logReadable: lines != nil, enumerated: CrossDeskLogRecord.lastEnumeration(records),
             onlineSnugDisplays: Set((Screens.online() ?? []).filter { CGDisplayVendorNumber($0) == ScreenSpec.vendorID }),
-            onlineDisplays: Screens.online() ?? [],
+            onlineDisplays: Screens.standalone() ?? [],
             sessionsInLog: records.filter { $0.date >= since && $0.event == .captureStarted }.count,
             detectionsInSnugLog: snug.detections.count)
         let items = CrossDeskCheck.evaluate(facts)

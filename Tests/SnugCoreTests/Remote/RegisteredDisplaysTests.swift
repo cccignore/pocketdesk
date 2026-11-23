@@ -28,4 +28,10 @@ struct RegisteredDisplaysTests {
         // 登记了 #1、#22、#24，关掉再打开 #22 那块（换成 #25）：1 号位补上的是已经登记过的 #24
         #expect(RegisteredDisplays.misses([1, 22, 24], snug: [24, 25], online: [1, 24, 25]))
     }
+
+    @Test("切不到的是哪几块：已经补上位的不算")
+    func missing() {
+        #expect(RegisteredDisplays.missing([1, 22], snug: [24, 25], online: [1, 24, 25]) == [25])
+        #expect(RegisteredDisplays.missing([1, 22], snug: [24], online: [1, 24]).isEmpty)
+    }
 }

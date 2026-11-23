@@ -123,6 +123,23 @@ struct CrossDeskShaperScenarioTests {
         #expect(leadIn.maxStep <= 31)
     }
 
+    @Test("网络差（丢包、成批到达、隔 20–60 毫秒才放出）：同一甩照样连成一笔；慢收尾后往回甩照样分开，不管放出间隔多大")
+    func poorNetwork() {
+        // 60Hz 每下 50 点，中间丢了两下（隔 52 毫秒）
+        let droppedTwo = run([.move(300, 0), .move(350, 0.017), .move(400, 0.034), .move(550, 0.086), .move(600, 0.103), .move(650, 0.12), .expire])
+        #expect(droppedTwo.began == 1 && droppedTwo.total >= 349)
+        // 一批一批到，这一批隔了 57 毫秒
+        let batch = run([.move(150, 0), .move(171, 0.017), .move(222, 0.033), .move(305, 0.05), .move(416, 0.067), .move(532, 0.083),
+                         .move(649, 0.14), .move(766, 0.1403), .move(882, 0.1406), .expire])
+        #expect(batch.began == 1 && batch.total >= 731)
+        // 慢收尾后手指回到上面往回甩，卡住后每隔 6 毫秒放出一下
+        for spacing in [0.004, 0.006, 0.012, 0.02] {
+            let back = run([.move(300, 0), .move(330, 0.016), .move(360, 0.032), .move(364, 0.048), .move(366, 0.14),
+                            .move(120, 0.14 + spacing), .move(200, 0.14 + 2 * spacing), .move(300, 0.14 + 3 * spacing), .expire])
+            #expect(back.maxStep <= 101, "放出间隔 \(spacing) 秒")
+        }
+    }
+
     @Test("惯性中网络卡住：前一甩的一下尾巴之后紧接着在前方点一下，仍只是停住惯性，不点到内容")
     func tapAfterStragglerDuringCoast() {
         let coast = moves(from: 300, step: 30, n: 5, at: 0, dt: 0.016) + [.expire]
