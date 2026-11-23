@@ -35,11 +35,21 @@ struct CrossDeskLogTests {
     [2026-11-23 18:05:35.123] [crossdesk] [info] Start screen capturer, show cursor: true
     [2026-11-23 18:07:10.500] [crossdesk] [info] Last remote controller disconnected; recovering privacy, reason=peer_closed
     [2026-11-23 18:07:10.501] [crossdesk] [info] Stop screen capturer
-    [2026-11-23 19:00:00.000] [crossdesk] [info] macOS display discovered: index=0, display_id=1, name='Built-in Retina Display'
-    [2026-11-23 19:00:00.001] [crossdesk] [info] macOS display discovered: index=1, display_id=7, name='Snug 手机屏'
+    [2026-11-23 19:00:00.000] [crossdesk] [info] [screen_capturer_sck_impl.mm:386] macOS display discovered: index=0, display_id=1, name='Built-in Retina Display'
+    [2026-11-23 19:00:00.001] [crossdesk] [info] [screen_capturer_sck_impl.mm:386] macOS display discovered: index=1, display_id=7, name='Snug 手机屏'
     [2026-11-23 19:02:00.000] [crossdesk] [warning] something unrelated
     not a log line
     """
+
+    @Test("发布版的日志在级别后面多一段源码位置（v1.7.6 真机）：照样认")
+    func sourceLocation() {
+        let line = "[2026-11-24 01:43:36.759] [crossdesk] [info] [screen_capturer_sck_impl.mm:386] macOS display discovered: index=1, display_id=13, name='Snug 手机屏'"
+        #expect(CrossDeskLogRecord(line: line)?.event == .displayDiscovered(index: 1, display: 13))
+        let start = "[2026-11-24 02:00:00.000] [crossdesk] [info] [session_device_manager.cpp:345] Start screen capturer, show cursor: true"
+        #expect(CrossDeskLogRecord(line: start)?.event == .captureStarted)
+        // 内容本身以方括号开头的不当成源码位置剥掉
+        #expect(CrossDeskLogRecord(line: "[2026-11-24 02:00:00.000] [crossdesk] [info] [peer] Start screen capturer")?.event == nil)
+    }
 
     @Test("认出时间、远程开始和结束、启动时读到的显示器；认不出的行跳过")
     func parse() {
