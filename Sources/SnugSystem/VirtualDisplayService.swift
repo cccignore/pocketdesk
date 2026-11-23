@@ -110,6 +110,9 @@ public final class VirtualDisplayService: VirtualDisplays {
         }
         let from = DisplayMode.describe(id)
         let size = fit.size(width: width)
+        // 光标在这块屏上：换档前挪进新尺寸里，换档后放回同一相对位置。不挪的话屏变矮时它被夹到底边，程序坞跟着挪过来（见 CursorSpot）
+        let cursor = CGEvent(source: nil).flatMap { event in bounds(id).flatMap { CursorSpot(event.location, on: $0) } }
+        if let cursor { Self.warp(cursor.beforeSwitch(to: size), id, "换档前") }
         let status = await runHelper(id, .hiDPI(width: width, height: Int(size.height)))
         guard status == 0 else {
             Log.warn("屏 #\(id) 换不到 \(width) 宽（帮手退出码 \(status.map(String.init) ?? "启动失败")），现在 \(DisplayMode.describe(id))")
@@ -118,11 +121,18 @@ public final class VirtualDisplayService: VirtualDisplays {
         let switched = await poll(timeout: Self.screenUpdateTimeout, every: 0.05) {
             self.width(id) == width && Screens.screen(for: id)?.frame.width == CGFloat(width)
         }
+        if let cursor, let now = bounds(id) { Self.warp(cursor.afterSwitch(in: now), id, "换档后") }
         if switched {
             Log.info("屏 #\(id) 换到 \(width) 宽（原来 \(from)）")
         } else {
             Log.warn("屏 #\(id) 帮手说换到了 \(width) 宽，\(Int(Self.screenUpdateTimeout)) 秒内界面没认到，现在 \(DisplayMode.describe(id))")
         }
+    }
+
+    /// 挪光标（不发事件）。挪不动只记一笔：光标没挪最多是程序坞跑过来，换档照常
+    private static func warp(_ point: CGPoint, _ id: DisplayID, _ when: String) {
+        let result = CGWarpMouseCursorPosition(point)
+        if result != .success { Log.warn("屏 #\(id) \(when)挪光标到 (\(Int(point.x)),\(Int(point.y))) 没成（CGError \(result.rawValue)）") }
     }
 
     public func bounds(_ id: DisplayID) -> CGRect? {
