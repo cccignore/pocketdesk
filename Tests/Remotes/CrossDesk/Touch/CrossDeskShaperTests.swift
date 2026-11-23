@@ -36,9 +36,11 @@ struct CrossDeskShaperTests {
         #expect(shaper.shape(event(.move, 100, 380, 1.04)) == [ShapedInput(TouchInput(.drag, at: CGPoint(x: 100, y: 340), time: 1.02, synthetic: true), fromCurrent: false)])
         #expect(shaper.deadline == 1.04 + CrossDeskShaper.strokeTimeout)
         #expect(shaper.expire(now: 1.05).isEmpty)
-        // 压着的最后一下扔掉（可能是按下晚到的点按前导），抬起记在交出去的最后一下
+        // 压着的最后一下接着这一笔：交出去再收尾，抬起记在它的时刻
+        let last = CGPoint(x: 100, y: 380)
         #expect(shaper.expire(now: 1.04 + CrossDeskShaper.strokeTimeout) == [
-            ShapedInput(TouchInput(.release, at: CGPoint(x: 100, y: 340), time: 1.02, synthetic: true), fromCurrent: false),
+            ShapedInput(TouchInput(.drag, at: last, time: 1.04, synthetic: true), fromCurrent: false),
+            ShapedInput(TouchInput(.release, at: last, time: 1.04, synthetic: true), fromCurrent: false),
         ])
         #expect(shaper.deadline == nil)
         // 孤零零的一下移动（两指点右键前、悬停一下）到点就扔掉，什么都不交
@@ -63,20 +65,25 @@ struct CrossDeskShaperTests {
         #expect(shaper.shape(event(.move, 100, 360, 6.02)).map(\.input.synthetic) == [true])
     }
 
-    @Test("相邻两下移动隔得远（超过 maxStep）是两个手势：已经开始的那一笔收掉（压着的那下离它近，算它的），孤零零的一下扔掉，远处那下重新开始")
+    @Test("相邻两下隔得远（超过 maxStep）又隔了一阵（至少 splitGap）是两个手势：已经开始的那一笔收掉（压着的那下算它的），孤零零的一下扔掉，远处那下重新开始；隔得远但紧挨着到的是快甩，照样连着")
     func farMoveStartsAnotherGesture() {
         var shaper = CrossDeskShaper()
         _ = shaper.shape(event(.move, 100, 300, 1))
         _ = shaper.shape(event(.move, 100, 340, 1.02))
-        #expect(shaper.shape(event(.move, 400, 900, 1.05)) == [
+        #expect(shaper.shape(event(.move, 400, 900, 1.1)) == [
             ShapedInput(TouchInput(.drag, at: CGPoint(x: 100, y: 340), time: 1.02, synthetic: true), fromCurrent: false),
             ShapedInput(TouchInput(.release, at: CGPoint(x: 100, y: 340), time: 1.02, synthetic: true), fromCurrent: false),
         ])
         // 孤零零的一下之后远处来了一下：扔掉前一下，什么都不交
         var single = CrossDeskShaper()
         _ = single.shape(event(.move, 100, 300, 1))
-        #expect(single.shape(event(.move, 400, 900, 1.05)).isEmpty)
-        #expect(single.shape(event(.move, 400, 940, 1.07)).map(\.input.location) == [CGPoint(x: 400, y: 900)])
+        #expect(single.shape(event(.move, 400, 900, 1.1)).isEmpty)
+        #expect(single.shape(event(.move, 400, 940, 1.12)).map(\.input.location) == [CGPoint(x: 400, y: 900)])
+        // 快甩：一下隔 120 点，但只隔 15 毫秒
+        var fast = CrossDeskShaper()
+        _ = fast.shape(event(.move, 100, 300, 1))
+        _ = fast.shape(event(.move, 100, 340, 1.02))
+        #expect(fast.shape(event(.move, 100, 460, 1.035)).map(\.input.kind) == [.drag])
     }
 
     @Test("滑到一半按下（滑完马上在终点附近点）：先把已经滑的那一笔收掉（抬起记在点按前导之前的最后一下），点按的前导不算进滑动")
@@ -130,7 +137,7 @@ struct CrossDeskShaperTests {
         #expect(phases(pipeline.handle(event(.move, 100, 360, 0.04), from: 0, regions: [phone])) == [.began, .changed])
         for i in 3...5 { _ = pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.02 * Double(i)), from: 0, regions: [phone]) }
         let deadline = try! #require(pipeline.deadline)
-        #expect(phases(pipeline.expire(now: deadline, regions: [phone])) == [.ended])
+        #expect(phases(pipeline.expire(now: deadline, regions: [phone])) == [.changed, .ended])
         #expect(pipeline.isCoasting)
 
         var outside = TouchPipeline(shapers: [CrossDeskShaper()])
@@ -160,7 +167,7 @@ struct CrossDeskShaperTests {
             let step = pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.02 * Double(i)), from: 0, regions: [phone])
             deltas += commands(step).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } }
         }
-        let lead = pipeline.handle(event(.move, 400, 900, 0.15), from: 0, regions: [phone])
+        let lead = pipeline.handle(event(.move, 400, 900, 0.16), from: 0, regions: [phone])
         deltas += commands(lead).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } }
         let down = pipeline.handle(event(.leftDown, 400, 900, 0.151), from: 0, regions: [phone])
         deltas += commands(down).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } }
@@ -188,9 +195,9 @@ struct CrossDeskShaperTests {
         _ = pipeline.expire(now: try! #require(pipeline.deadline), regions: [phone])
         #expect(pipeline.isCoasting)
         _ = pipeline.handle(event(.move, 300, 200, 0.4), from: 0, regions: [phone])
-        _ = pipeline.handle(event(.move, 100, 800, 0.45), from: 0, regions: [phone])
-        _ = pipeline.handle(event(.leftDown, 100, 800, 0.451), from: 0, regions: [phone])
-        #expect(commands(pipeline.handle(event(.leftUp, 100, 800, 0.452), from: 0, regions: [phone])).isEmpty)
+        _ = pipeline.handle(event(.move, 100, 800, 0.5), from: 0, regions: [phone])
+        _ = pipeline.handle(event(.leftDown, 100, 800, 0.501), from: 0, regions: [phone])
+        #expect(commands(pipeline.handle(event(.leftUp, 100, 800, 0.502), from: 0, regions: [phone])).isEmpty)
     }
 
     @Test("端到端：两下甩得很快（间隔不到收尾时间、落在别处）：分成两笔，第二笔不从第一笔的终点跳过去")
@@ -199,7 +206,35 @@ struct CrossDeskShaperTests {
         var deltas: [Double] = []
         func take(_ step: TouchStep) { deltas += commands(step).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } } }
         for i in 0...4 { take(pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.02 * Double(i)), from: 0, regions: [phone])) }
-        for i in 0...4 { take(pipeline.handle(event(.move, 100, 200 + 30 * Double(i), 0.1 + 0.02 * Double(i)), from: 0, regions: [phone])) }
+        for i in 0...4 { take(pipeline.handle(event(.move, 100, 200 + 30 * Double(i), 0.16 + 0.02 * Double(i)), from: 0, regions: [phone])) }
         #expect(deltas.allSatisfy { abs($0) <= 31 })
+    }
+
+    @Test("端到端：快甩（60Hz，每下隔 110 点）照样滚动并带惯性")
+    func fastFlickScrolls() {
+        var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])
+        var scrolled = 0.0
+        for i in 0...4 {
+            let step = pipeline.handle(event(.move, 270, 100 + 110 * Double(i), Double(i) / 60), from: 0, regions: [phone])
+            scrolled += commands(step).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } }.reduce(0, +)
+        }
+        let end = pipeline.expire(now: try! #require(pipeline.deadline), regions: [phone])
+        scrolled += commands(end).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } }.reduce(0, +)
+        #expect(abs(scrolled) >= 400)
+        #expect(pipeline.isCoasting)
+    }
+
+    @Test("端到端：短甩（只有两下、或者最后一下才滑出防抖）照样滚动")
+    func shortFlickScrolls() {
+        var two = TouchPipeline(shapers: [CrossDeskShaper()])
+        _ = two.handle(event(.move, 100, 300, 0), from: 0, regions: [phone])
+        _ = two.handle(event(.move, 100, 340, 0.02), from: 0, regions: [phone])
+        #expect(phases(two.expire(now: try! #require(two.deadline), regions: [phone])) == [.began, .changed, .ended])
+
+        var late = TouchPipeline(shapers: [CrossDeskShaper()])
+        _ = late.handle(event(.move, 100, 300, 0), from: 0, regions: [phone])
+        _ = late.handle(event(.move, 100, 305, 0.02), from: 0, regions: [phone])
+        _ = late.handle(event(.move, 100, 345, 0.04), from: 0, regions: [phone])
+        #expect(phases(late.expire(now: try! #require(late.deadline), regions: [phone])) == [.began, .changed, .ended])
     }
 }
