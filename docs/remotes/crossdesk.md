@@ -12,10 +12,12 @@
 
 ## 怎么用
 
-1. 被控 Mac 装 CrossDesk（[Releases](https://github.com/kunkundi/crossdesk/releases) 的 `.pkg`），按提示授予屏幕录制与辅助功能权限；iPhone 从 App Store 装 CrossDesk，设置里鼠标模式选「绝对位置」
+1. 被控 Mac 装 CrossDesk（[Releases](https://github.com/kunkundi/crossdesk/releases) 的 `.pkg`），按提示授予屏幕录制与辅助功能权限；iPhone 从 App Store 装 CrossDesk，设置 →「鼠标控制」的控制模式选「绝对位置」（连接中也可以在悬浮菜单里把「相对鼠标」点成「绝对鼠标」，按钮上写的是当前模式，选过会记住）
 2. 装着 CrossDesk 时，Snug 屏幕列表里开着的屏常驻（见下文「屏常驻」），先让 Snug 把屏建好，再打开 CrossDesk。菜单栏出现「重启 CrossDesk」时点一下
 3. 手机连上后，在 CrossDesk 的悬浮菜单里切换显示器，选 Snug 的屏
 4. 不确定哪里不对时运行 `scripts/snug remote-check crossdesk`
+
+Mac 端 CrossDesk 设置里的「连接断开后锁屏」默认开着（`config_center.h` 的 `lock_on_disconnect`）：最后一个控制端断开时 Mac 锁屏（`connection_runtime.cpp` 的 `HandleScreenLock`）。Snug 照常收尾，下次连上要先解锁。登录框在主屏上，手机上要在显示器菜单里切到主屏输入密码（未实测）。
 
 ## 身份
 
@@ -25,6 +27,8 @@
 | 自家 App | `cn.crossdesk.app`，不出现在 App 资源库里 |
 | 注入事件 | 按记号认：每个注入的鼠标、键盘事件的 `eventSourceUserData` 都是 `0x43524F5353444553`（'CROSSDES'）。Mac 上只有一个进程，界面、抓屏、注入都在里面，按进程名分不清 |
 | 只在启动时读一次显示器 | 是（`readsDisplaysOnce`），见下文「屏常驻」 |
+| 画面让位 | `clientInsets`：iPhone 客户端把画面等比铺在安全区里（`RemoteSessionView.swift`），按灵动岛机型让位，竖屏上下共 96 点、横屏左右共 124 点、上下共 21 点；键盘盖住约 340 点（见下文「打字」）。模拟器 iPhone 18 Pro 实测画面从 707 点高变成 777 点高，只剩灵动岛和底部横条两条黑边 |
+| 输入法 | `needsASCIIInputSource`：它把手机上打好的字按键码 0 加文字注入（`keyboard_capturer.cpp`），Mac 用中文输入法时会被再组一次字。远程期间 Snug 把 Mac 换成英文输入法（见 [工作原理](../how-it-works.md#输入法)） |
 
 ## 信号
 
@@ -72,7 +76,8 @@ CrossDesk 在启动时读一次显示器列表，按当时的数目注册视频�
 
 ## 和 UU远程 不同、待真机核对的
 
-- 屏幕比例的让位按 UU 的工具栏标定（`ScreenFit`）。CrossDesk 的画面铺法未实测，比例可能要另调
+- 画面让位按灵动岛机型的安全区算。刘海屏（顶部约 47 点）、带 Home 键（顶部 20 点、底部 0）的 iPhone 安全区不同，上下会多出几十点黑边；键盘高度按模拟器的英文键盘量，中文键盘（候选栏）、带 Home 键机型的键盘高度未实测
+- CrossDesk 自带更新检查，夜里从 1.7.6 升到了 1.7.7。升级后先跑一次 `scripts/snug remote-check crossdesk`，确认电源断言的名字、日志格式没变
 - CrossDesk 的远端分辨率设置会在最后一个控制端断开时把改过的显示器设回原模式；不要对 Snug 的屏用这个设置，Snug 自己会换档
 - iPad 接了触控板或鼠标时，指针悬停也是不按键的移动，会被当成滑动
 - 点一下的按下和抬起是两条消息：抬起比按下晚到 0.15 秒以上（网络重传）会被当成长按，点成右键
