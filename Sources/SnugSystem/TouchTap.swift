@@ -33,12 +33,11 @@ public final class TouchTap {
         return start()
     }
 
-    /// 换接管的远控（装上、卸掉了一家）：开着的监听按新的事件种类、新的整理器重开
+    /// 换接管的远控（装上、卸掉了一家）：开着的监听先关掉，调用方接着调 setRegions 按新的事件种类、新的整理器重开
+    /// （开不开得起来由 setRegions 交回）。正按着、正在惯性的那一下随旧监听一起丢掉：只在装上、卸掉远控时发生
     public func setSources(_ sources: [TouchSource]) {
         self.sources = sources
-        guard session != nil else { return }
         stop()
-        _ = start()
     }
 
     /// 起监听线程，等它报告监听建没建成。一家都不接管时不开（没有要收的事件）
@@ -75,6 +74,8 @@ private final class TapSession: @unchecked Sendable {
     private var tap: CFMachPort?
     private var pipeline: TouchPipeline
     private var heldPress: CGEvent?
+    /// 下一次补发的点按按单击算（TouchCommand.resetClickCount），补完抬起就清掉
+    private var resetClickCount = false
     private var coastTimer: CFRunLoopTimer?
     /// 不发抬起的远控那一笔到点收尾（TouchPipeline.deadline）
     private var expireTimer: CFRunLoopTimer?
@@ -165,7 +166,10 @@ private final class TapSession: @unchecked Sendable {
 
     private func perform(_ command: TouchCommand, current: CGEvent?, region: TouchRegion?) {
         switch command {
+        case .resetClickCount:
+            resetClickCount = true
         case .replayPress:
+            if resetClickCount { heldPress?.setIntegerValueField(.mouseEventClickState, value: 1) }
             TouchEvents.post(heldPress)
             heldPress = nil
         case .replayCurrent:
@@ -174,7 +178,12 @@ private final class TapSession: @unchecked Sendable {
                 Log.error("手势翻译：到点收尾时要求补发当前事件，可手上没有原事件（整理器不该在收尾时交出代表原事件的输入），已忽略")
                 return
             }
-            TouchEvents.post(current.copy())
+            let replay = current.copy()
+            if resetClickCount {
+                replay?.setIntegerValueField(.mouseEventClickState, value: 1)
+                resetClickCount = false
+            }
+            TouchEvents.post(replay)
         case .rightClick(let point):
             TouchEvents.rightClick(at: point).forEach(TouchEvents.post)
         case .scroll(let step):

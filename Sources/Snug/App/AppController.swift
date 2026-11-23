@@ -40,9 +40,11 @@ final class AppController: Sendable {
     private var resident = false
     /// 装着的远控（日志名）：手势只接管这几家
     private var installedRemotes: [String]?
-    /// Snug 的屏每个编号头一回在线的时刻：只在启动时读一次显示器的远控比它早启动就看不到这块屏。
-    /// 同一个编号掉线一拍再回来不算新的（远控按编号认屏，回来的它还认得）
-    private var snugDisplaysFirstSeen: [DisplayID: Date] = [:]
+    /// Snug 的屏每个编号这一次连续在线是从什么时候开始的、上一拍还在不在：只在启动时读一次显示器的远控比它早启动就看不到这块屏。
+    /// 掉线不到 snugDisplayBlip 又回来的不算重新上线（屏幕配置一变会短暂重排）；掉线久了再回来算（远控在它不在时重启过就看不到）
+    private var snugDisplaysOnlineSince: [DisplayID: Date] = [:]
+    private var snugDisplaysLastSeen: [DisplayID: Date] = [:]
+    private static let snugDisplayBlip: TimeInterval = 2
     /// 单调时钟的起点：系统改时间不会让「已经过了多久」算错
     private let anchor = (date: Date(), uptime: ProcessInfo.processInfo.systemUptime)
 
@@ -203,12 +205,17 @@ final class AppController: Sendable {
     }
 
     /// 只在启动时读一次显示器的远控，启动得比 Snug 此刻在线的屏晚才看得到它们。开机时两个都自动打开，谁先谁后说不准：
-    /// 每拍看一眼，远控的进程比此刻在线的哪块屏头一回上线早，就列进 staleRemotes，菜单栏给「重启」。
+    /// 每拍看一眼，远控的进程比此刻在线的哪块屏这一次上线早，就列进 staleRemotes，菜单栏给「重启」。
     /// 屏上线和下一拍之间（最多 0.5 秒）启动的会误报一次，重启无害
     private func refreshStaleRemotes(at now: Date) {
         let online = Set(state.desks.desks.values.compactMap(\.display))
-        for display in online where snugDisplaysFirstSeen[display] == nil { snugDisplaysFirstSeen[display] = now }
-        let since = online.compactMap { snugDisplaysFirstSeen[$0] }.max()
+        for display in online {
+            if let last = snugDisplaysLastSeen[display], now.timeIntervalSince(last) <= Self.snugDisplayBlip {} else {
+                snugDisplaysOnlineSince[display] = now
+            }
+            snugDisplaysLastSeen[display] = now
+        }
+        let since = online.compactMap { snugDisplaysOnlineSince[$0] }.max()
         let stale = remotes.map(\.identity).filter { identity in
             guard identity.readsDisplaysOnce, let since else { return false }
             let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
@@ -226,8 +233,12 @@ final class AppController: Sendable {
         let installed = Self.installed(remotes)
         let names = installed.map(\.identity.logName)
         if names != installedRemotes {
-            if installedRemotes != nil { touch.setSources(installed.map { type(of: $0).touchSource }) }
+            let changed = installedRemotes != nil
             installedRemotes = names
+            if changed {
+                touch.setSources(installed.map { type(of: $0).touchSource })
+                syncGestures()
+            }
             Log.info("装着的远控：\(names.isEmpty ? "没有" : names.joined(separator: "、"))（手势只接管这几家）")
         }
         let needing = installed.map(\.identity).filter(\.readsDisplaysOnce)

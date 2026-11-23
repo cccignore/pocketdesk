@@ -74,6 +74,8 @@ public enum TouchCommand: Equatable, Sendable {
     case replayPress
     /// 补发当前这个事件（原事件吞掉，保证顺序在补发的按下之后）
     case replayCurrent
+    /// 紧接着补发的这次点按按单击算：前一下点按只停了惯性、没补发，远控那边却已经把这一下算成了连击（双击）
+    case resetClickCount
     case rightClick(at: CGPoint)
     case scroll(ScrollStep)
     /// 点了窗口的关闭按钮：原来的按下、抬起先扣着。系统那半核对过按钮还在那里就交给 Snug 先放回原位再关，
@@ -102,6 +104,8 @@ public struct TouchTranslator: Sendable {
     static let minFlingSpan: TimeInterval = 0.04
     /// 基准宽度下甩出去的速度上限（点/秒）：约滚一千多点就停
     static let maxFlingSpeed = 4000.0
+    /// 远控按多久以内的连点算连击：macOS 默认双击间隔约 0.5 秒，CrossDesk 的 Mac 端按 500 毫秒、8 像素计（mouse_controller.cpp）
+    static let doubleClickWindow: TimeInterval = 0.5
 
     private enum Phase: Equatable {
         case idle
@@ -125,6 +129,8 @@ public struct TouchTranslator: Sendable {
     private var pressOnClose = false
     /// 这一笔是拼出来的：只能是滚动
     private var pressSynthetic = false
+    /// 上一下只停了惯性、没补发的点按（松手时刻、位置）：紧接着在同一处的点按补发时按单击算
+    private var stopTap: (time: TimeInterval, point: CGPoint)?
 
     public init() {}
 
@@ -176,6 +182,7 @@ public struct TouchTranslator: Sendable {
             return .pass
         case .pending(let since):
             guard distance(input.location, origin) >= Self.slop * scale else { return .swallow() }
+            stopTap = nil
             if !pressSynthetic, input.time - since >= Self.holdDuration {
                 // 按住后再拖：补发按下，接下来照旧拖动，就是原来的选择
                 phase = .selecting
@@ -198,11 +205,18 @@ public struct TouchTranslator: Sendable {
             phase = .idle
             if pressSynthetic { return .swallow() }
             if input.time - since >= Self.holdDuration {
+                stopTap = nil
                 return .swallow([.rightClick(at: origin)])
             }
             // iPhone 上点一下正在滚的列表只是停住；补发点击会点到手指下还在移动的东西
-            if pressStoppedCoast { return .swallow() }
-            return pressOnClose ? .swallow([.closeWindow(at: origin)]) : .swallow([.replayPress, .replayCurrent])
+            if pressStoppedCoast {
+                stopTap = (input.time, origin)
+                return .swallow()
+            }
+            let afterStop = stopTap.map { input.time - $0.time <= Self.doubleClickWindow && distance(origin, $0.point) <= Self.slop * scale } ?? false
+            stopTap = nil
+            if pressOnClose { return .swallow([.closeWindow(at: origin)]) }
+            return .swallow((afterStop ? [.resetClickCount] : []) + [.replayPress, .replayCurrent])
         case .scrolling:
             phase = .idle
             let ended = wheel.step(dx: 0, dy: 0, phase: .ended, momentum: .none, at: origin)

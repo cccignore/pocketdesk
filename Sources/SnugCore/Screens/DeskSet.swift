@@ -557,7 +557,7 @@ public final class DeskSet {
     /// 远程结束后还留着的屏：
     /// - 设为主屏的那块：屏上的窗口原样留着，下次连上接着用（主人定：设了主屏，屏上的东西就不该变；取消设为主屏、撤这块屏时才放回）
     /// - 标了常驻的别的屏（远控只在启动时读一次显示器，屏不能撤）：屏留着，窗口放回原处、回到资源库，和撤屏时一样（本机看不见这块屏）
-    /// - 别的（--preview-screens 预览）：照旧原样留着
+    /// - 别的（没标常驻：--preview-screens 预览、又没装只在启动时读一次显示器的远控）：照旧原样留着
     /// 都收掉这次远程的提示。按此刻的 wishes 认，设主屏失败（ScreenSet.mainScreen 为空）时设为主屏的那块照样不动
     private func endSession() async {
         for desk in orderedDesks {

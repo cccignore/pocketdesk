@@ -202,6 +202,38 @@ struct TouchTranslatorTests {
         #expect(t.handle(input(.release, 100, 300, 1.1), in: phone).commands == [.replayPress, .replayCurrent])
     }
 
+    @Test("惯性中点一下只停住，紧接着在同一处再点：远控那边按连击算成双击，补发时改回单击（前一下没补发，App 只该看到一次单击）；隔得久、点在别处的照常")
+    func tapAfterStopTapIsSingleClick() {
+        func coasting() -> TouchTranslator {
+            var t = TouchTranslator()
+            _ = t.handle(input(.press, 100, 300, 0), in: phone)
+            for i in 1...5 { _ = t.handle(input(.drag, 100, 300 + 20 * Double(i), 0.02 * Double(i)), in: phone) }
+            _ = t.handle(input(.release, 100, 400, 0.1), in: phone)
+            _ = t.momentumFrame()
+            return t
+        }
+        var t = coasting()
+        _ = t.handle(input(.press, 200, 500, 0.2), in: phone)
+        #expect(t.handle(input(.release, 200, 500, 0.25), in: phone).commands.isEmpty)
+        _ = t.handle(input(.press, 202, 501, 0.5), in: phone)
+        #expect(t.handle(input(.release, 202, 501, 0.55), in: phone).commands == [.resetClickCount, .replayPress, .replayCurrent])
+        // 再点一下就是普通的双击，不再改
+        _ = t.handle(input(.press, 202, 501, 0.7), in: phone)
+        #expect(t.handle(input(.release, 202, 501, 0.75), in: phone).commands == [.replayPress, .replayCurrent])
+
+        var late = coasting()
+        _ = late.handle(input(.press, 200, 500, 0.2), in: phone)
+        _ = late.handle(input(.release, 200, 500, 0.25), in: phone)
+        _ = late.handle(input(.press, 200, 500, 0.9), in: phone)
+        #expect(late.handle(input(.release, 200, 500, 0.95), in: phone).commands == [.replayPress, .replayCurrent])
+
+        var elsewhereTap = coasting()
+        _ = elsewhereTap.handle(input(.press, 200, 500, 0.2), in: phone)
+        _ = elsewhereTap.handle(input(.release, 200, 500, 0.25), in: phone)
+        _ = elsewhereTap.handle(input(.press, 300, 700, 0.4), in: phone)
+        #expect(elsewhereTap.handle(input(.release, 300, 700, 0.45), in: phone).commands == [.replayPress, .replayCurrent])
+    }
+
     @Test("事件扎堆到达（网络抖了一下）：慢慢拖不会甩出几屏，速度按更长的跨度算、并且封顶")
     func bunchedEventsDoNotOverFling() {
         var t = TouchTranslator()
