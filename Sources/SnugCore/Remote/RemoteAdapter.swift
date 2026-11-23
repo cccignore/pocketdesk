@@ -21,17 +21,55 @@ public struct RemoteIdentity: Equatable, Sendable {
     }
 }
 
-/// 认哪个进程注入的事件：按来源进程的可执行文件名认，本机的触控板、鼠标不是它发的
-public struct InjectedEventSource: Equatable, Sendable {
-    public let executableName: String
+/// 一个鼠标事件从哪来：来源进程的可执行文件路径（读不到时为空串），和事件自带的 eventSourceUserData（没写时为 0）
+public struct EventOrigin: Equatable, Sendable {
+    public var executablePath: String
+    public var userData: Int64
 
-    public init(executableName: String) {
-        self.executableName = executableName
+    public init(executablePath: String, userData: Int64 = 0) {
+        self.executablePath = executablePath
+        self.userData = userData
+    }
+}
+
+/// 认哪些事件是这家远控注入的，本机的触控板、鼠标不是它发的。两种认法：
+/// - 按进程：注入事件的是一个单独的可执行文件（UU 的 UURemoteServer）
+/// - 按记号：远控给每个注入事件写同一个 eventSourceUserData（CrossDesk），界面和后台是同一个程序也分得清，不用查进程
+public struct InjectedEventSource: Equatable, Sendable, CustomStringConvertible {
+    private enum Rule: Equatable, Sendable {
+        case process(executableName: String)
+        case marker(Int64)
     }
 
-    /// executablePath：事件来源进程的可执行文件路径，读不到时为空串
-    public func matches(executablePath: String) -> Bool {
-        (executablePath as NSString).lastPathComponent == executableName
+    private let rule: Rule
+
+    public init(executableName: String) {
+        rule = .process(executableName: executableName)
+    }
+
+    public init(marker: Int64) {
+        rule = .marker(marker)
+    }
+
+    /// 判之前要不要先查来源进程的路径：按进程号查路径是一次系统调用，只按记号认的省掉
+    public var needsExecutablePath: Bool {
+        if case .process = rule { return true }
+        return false
+    }
+
+    public func matches(_ origin: EventOrigin) -> Bool {
+        switch rule {
+        case .process(let name): (origin.executablePath as NSString).lastPathComponent == name
+        case .marker(let marker): origin.userData == marker
+        }
+    }
+
+    /// 写进日志的写法：开启手势翻译时列出接管谁发来的，「手势没反应」先看这一行
+    public var description: String {
+        switch rule {
+        case .process(let name): name
+        case .marker(let marker): String(format: "记号 0x%llX", marker)
+        }
     }
 }
 

@@ -57,25 +57,32 @@ enum TouchEvents {
     }
 }
 
-/// 认远控注入的事件：按来源进程号查可执行文件路径，交给各家的 InjectedEventSource 判断，按进程号缓存。
-/// 本机的触控板、鼠标不是它们发的，一律不认
+/// 认远控注入的事件：取事件的来源（进程的可执行文件路径、事件自带的记号），交给各家的 InjectedEventSource 判断。
+/// 路径按进程号缓存（事件多，一个进程只查一次）；只按记号认的远控不查路径。本机的触控板、鼠标不是它们发的，一律不认
 struct InjectedEvents {
     let injectors: [InjectedEventSource]
-    private var known: [pid_t: Bool] = [:]
+    private let needsPath: Bool
+    private var paths: [pid_t: String] = [:]
 
     init(injectors: [InjectedEventSource]) {
         self.injectors = injectors
+        needsPath = injectors.contains(where: \.needsExecutablePath)
     }
 
     mutating func contains(_ event: CGEvent) -> Bool {
         let pid = pid_t(event.getIntegerValueField(.eventSourceUnixProcessID))
         guard pid > 0 else { return false }
-        if let match = known[pid] { return match }
+        let origin = EventOrigin(executablePath: needsPath ? path(of: pid) : "",
+                                 userData: event.getIntegerValueField(.eventSourceUserData))
+        return injectors.contains { $0.matches(origin) }
+    }
+
+    private mutating func path(of pid: pid_t) -> String {
+        if let path = paths[pid] { return path }
         var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN))
         let length = Int(proc_pidpath(pid, &buffer, UInt32(buffer.count)))
         let path = length > 0 ? String(decoding: buffer.prefix(length).map { UInt8(bitPattern: $0) }, as: UTF8.self) : ""
-        let match = injectors.contains { $0.matches(executablePath: path) }
-        known[pid] = match
-        return match
+        paths[pid] = path
+        return path
     }
 }

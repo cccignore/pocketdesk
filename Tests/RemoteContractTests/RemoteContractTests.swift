@@ -46,15 +46,16 @@ struct RemoteContractTests {
         }
     }
 
-    @Test("注入事件：认它自己注入的进程；本机的事件、Snug 自己的进程、别家远控的注入进程都不认", arguments: drivers)
+    @Test("注入事件：认它自己注入的；本机的事件、Snug 自己补发的、别家远控注入的都不认", arguments: drivers)
     func injectedEvents(driver: any RemoteDriver) {
         let injector = driver.identity.injector
-        #expect(injector.matches(executablePath: driver.injectorPath))
-        #expect(!injector.matches(executablePath: ""))
-        #expect(!injector.matches(executablePath: "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer"))
-        #expect(!injector.matches(executablePath: "/Applications/Snug.app/Contents/MacOS/Snug"))
+        #expect(injector.matches(driver.injectedOrigin))
+        #expect(!injector.matches(EventOrigin(executablePath: "")))
+        #expect(!injector.matches(EventOrigin(executablePath: "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer")))
+        // Snug 补发的事件带自己的记号 'SNUG'（TouchEvents.marker）
+        #expect(!injector.matches(EventOrigin(executablePath: "/Applications/Snug.app/Contents/MacOS/Snug", userData: 0x534E_5547)))
         for other in drivers where other.identity != driver.identity {
-            #expect(!injector.matches(executablePath: other.injectorPath))
+            #expect(!injector.matches(other.injectedOrigin))
         }
     }
 

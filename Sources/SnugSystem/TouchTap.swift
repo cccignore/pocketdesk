@@ -43,7 +43,7 @@ public final class TouchTap {
             return false
         }
         session = next
-        Log.info("手势翻译已开启（只接管 \(injectors.map(\.executableName).joined(separator: "、")) 发来、在 Snug 屏里的操作）")
+        Log.info("手势翻译已开启（只接管 \(injectors.map(\.description).joined(separator: "、")) 发来、在 Snug 屏里的操作）")
         return true
     }
 
