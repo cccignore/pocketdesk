@@ -369,6 +369,17 @@ public struct RemoteObservation: Equatable, Sendable {
 
 **审那个 PR 时另要逐条核实的**：fork 里还一并做了几处不属于手势整理的改动，作用范围要逐条确认：远程期间隐藏 Snug 屏上的系统光标（按代码看对所有远控生效）；点按吸附到控件中心（每次点按查一次辅助功能）；点按反馈圈（黄圈、蓝框、红点，像调试画面）；快滑成批到达不再判成长按（改的是共用翻译器）。每条先问：是不是通用、会不会改变只有 UU 时的行为。`.memory` 的改动不收。
 
+### 12.5 手势整理落地（2026-11-24，接 CrossDesk 时）
+
+按 12.4 的草案拆了，起因是 CrossDesk：它的 iPhone 客户端单指滑动只发不按键的移动，长按 0.35 秒才发按下。
+
+- 端口：`TouchShaper`（`kinds`、`shape`、`deadline`、`expire`），`RemoteAdapter.makeTouchShaper()` 默认 `DirectShaper` 原样直通，UU 不用改
+- `TouchInput.synthetic`：整理器从不按键的移动里拼出来的一笔只能是滚动，不点击、不长按选择、不点右键（没有原事件可补发）。翻译器只多这一处
+- `TouchPipeline`：`TouchTap` 里的分派抽成纯值类型（按哪块范围、扣住哪个原事件、补发、作废），一个原事件整理出几个输入时按顺序给出要做的事。还掉 7.5「`TouchTap` 的分派没有测试」
+- `TouchTap` 只剩截事件、按 `injector` 认出是哪家、交 `TouchPipeline`、照做、定时器（惯性、到点收尾）
+- 只登记 UU 时：监听的事件种类仍只有左键三种，每个事件整理出的就是原来的输入，扣住、补发、作废的顺序和以前一样
+- 补发仍是改写拷贝上的记号。CrossDesk 的事件源为空、记号是逐个事件写上的字段，按源码看改写拷贝有效（未实测）；RustDesk 那种记号在事件源上的，接入时照 12.4 改用自己的事件源重建
+
 ## 附：调研原始报告
 
 - [research/coupling.md](research/coupling.md)：代码耦合与接口，72 条

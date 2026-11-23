@@ -21,11 +21,12 @@ Snug 只对接 UU远程，但对接的部分是一层可替换的适配器：核
 
 | 类型 | 要交什么 |
 | :--- | :--- |
-| `RemoteIdentity` | 日志名（写进日志与命令行，不含空格、不和别家重名）；界面名；自家 App 的 bundle（不出现在资源库里）；注入事件的进程 |
+| `RemoteIdentity` | 日志名（写进日志与命令行，不含空格、不和别家重名）；界面名；自家 App 的 bundle（不出现在资源库里）；注入事件怎么认（`InjectedEventSource`）；是不是只在启动时读一次显示器（`readsDisplaysOnce`，为真时屏常驻） |
 | `RemoteObservation` | 在不在场：只在有正面证据时为真；控制端：认不出为空；推流屏：不知道为 nil；信号快照：写进连入、断开日志 |
-| `RemoteAdapter` | 静态的 `identity`（身份属于这家远控，登记处、诊断命令、运行中的实例都从这里取）；`init()`；`start()`、`stop()`；`sample(wallClock:)` 每拍调一次 |
+| `RemoteAdapter` | 静态的 `identity`（身份属于这家远控，登记处、诊断命令、运行中的实例都从这里取）；`init()`；`start()`、`stop()`；`sample(wallClock:)` 每拍调一次；`makeTouchShaper()` 手势整理，默认原样直通 |
+| `TouchShaper` | 定义在 `Sources/SnugCore/Touch/TouchShaper.swift`：把自家注入的原始指针事件整理成翻译器认的「按下 → 拖动 → 抬起」。要接管的事件种类、整理、不发抬起时的到点收尾。纯状态机，放各家的纯逻辑目标里，可以按 `TouchPipeline` 端到端测 |
 
-不在端口里的：手势形态、屏幕让位、主屏策略、模式恢复、断开时序。这些按 UU远程 实测标定、各家暂时一样，留在共用代码里（[清单](uu.md#留在共用代码里的-uu-实测值)）；新的远控实测不同，改共用代码并补测试。⚠️ 例外是手势形态：共用的翻译器只认「按下 → 拖动 → 抬起」，事件形态不同的远控（RustDesk 触摸模式即是）计划改为各家在自己的适配器里整理成标准输入，见[设计记录 12.4](../remote-adapter/README.md#124-已知疏漏手势只拆了一半)；在那之前改共用的 `TouchTap`，只登记 UU 时的手势行为必须不变。注入事件有两种认法：按进程名（`InjectedEventSource(executableName:)`，UU 的 `UURemoteServer`），或按事件自带的 `eventSourceUserData` 记号（`InjectedEventSource(marker:)`，CrossDesk 给每个注入事件写同一个记号）。界面与服务是同一个可执行文件的远控用记号认。注意 Snug 补发事件时改写的是这个字段：记号写在事件源上的远控（RustDesk 实测）改不动，补发要改用自己的事件源重建，见[设计记录 12.4](../remote-adapter/README.md#124-已知疏漏手势只拆了一半)。
+不在端口里的：屏幕让位、主屏策略、模式恢复、断开时序。这些按 UU远程 实测标定、各家暂时一样，留在共用代码里（[清单](uu.md#留在共用代码里的-uu-实测值)）；新的远控实测不同，改共用代码并补测试。手势形态已进端口：事件形态和 UU 不同的远控（CrossDesk 单指滑动只发不按键的移动，RustDesk 触摸模式同样）在自己的 `TouchShaper` 里整理，共用的翻译器不动，样板见 [CrossDesk 适配](crossdesk.md#手势整理)。注入事件有两种认法：按进程名（`InjectedEventSource(executableName:)`，UU 的 `UURemoteServer`），或按事件自带的 `eventSourceUserData` 记号（`InjectedEventSource(marker:)`，CrossDesk 给每个注入事件写同一个记号）。界面与服务是同一个可执行文件的远控用记号认。注意 Snug 补发事件时改写的是这个字段：记号写在事件源上的远控（RustDesk 实测）改不动，补发要改用自己的事件源重建，见[设计记录 12.4](../remote-adapter/README.md#124-已知疏漏手势只拆了一半)。
 
 ## 步骤
 

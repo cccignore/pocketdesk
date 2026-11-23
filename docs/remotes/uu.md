@@ -50,5 +50,5 @@ UU远程 更新后，先用手机照常连一次（切到 Snug 的屏），再�
 - 平板屏右上角让开 50 点，UU 的圆形菜单按钮压着约 45 点（`TouchStyle`、设计令牌 `tabletTopRightClear`）
 - 新连接从主屏开始推流（设为主屏常驻的依据，`ScreenPlan`）
 - 断开防抖 1.5 秒、自扰静默期 5 秒（`ConnectionTracker`）
-- 手势只接管鼠标左键（`TouchEvents`）
+- 手势：UU 把手指的按下、拖动、抬起原样当左键发来，用默认的 `DirectShaper`，只接管左键三种（别家的整理见 `TouchShaper`）
 - 换比例后要在远控里切走再切回（屏上提示「屏幕比例已调整」）
