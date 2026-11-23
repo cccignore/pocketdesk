@@ -127,8 +127,11 @@ extension RemoteAdapter {
 
     public nonisolated static func makeTouchShaper() -> any TouchShaper { DirectShaper() }
 
-    /// 手势翻译用的：认哪些事件是它注入的，怎么整理
-    public static var touchSource: TouchSource { TouchSource(injector: identity.injector) { Self.makeTouchShaper() } }
+    /// 手势翻译用的：认哪些事件是它注入的，怎么整理。整理器是值类型，每次开启手势翻译拿一份新拷贝
+    public static var touchSource: TouchSource {
+        let fresh = makeTouchShaper()
+        return TouchSource(injector: identity.injector) { fresh }
+    }
 }
 
 /// 手势翻译接管的一家远控

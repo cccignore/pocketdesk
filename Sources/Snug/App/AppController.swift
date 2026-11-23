@@ -40,10 +40,12 @@ final class AppController: Sendable {
     private var resident = false
     /// 装着的远控（日志名）：手势只接管这几家
     private var installedRemotes: [String]?
-    /// Snug 的屏每个编号这一次连续在线是从什么时候开始的、上一拍还在不在：只在启动时读一次显示器的远控比它早启动就看不到这块屏。
-    /// 掉线不到 snugDisplayBlip 又回来的不算重新上线（屏幕配置一变会短暂重排）；掉线久了再回来算（远控在它不在时重启过就看不到）
+    /// Snug 的屏每个编号这一次上线的时刻（墙钟，和远控进程的启动时刻比）：只在启动时读一次显示器的远控比它早启动就看不到这块屏。
+    /// Snug 每次建屏编号都会变（真机实测 #13 → #14），新编号就是新上线
     private var snugDisplaysOnlineSince: [DisplayID: Date] = [:]
-    private var snugDisplaysLastSeen: [DisplayID: Date] = [:]
+    /// 某一拍真看到它不在了：从哪一刻（单调钟）开始不在的。掉线不到 snugDisplayBlip 又回来的不算重新上线
+    /// （屏幕配置一变会短暂重排）；休眠时不走拍、看不到它不在，醒来照旧不算
+    private var snugDisplaysGoneAt: [DisplayID: TimeInterval] = [:]
     private static let snugDisplayBlip: TimeInterval = 2
     /// 单调时钟的起点：系统改时间不会让「已经过了多久」算错
     private let anchor = (date: Date(), uptime: ProcessInfo.processInfo.systemUptime)
@@ -209,11 +211,16 @@ final class AppController: Sendable {
     /// 屏上线和下一拍之间（最多 0.5 秒）启动的会误报一次，重启无害
     private func refreshStaleRemotes(at now: Date) {
         let online = Set(state.desks.desks.values.compactMap(\.display))
+        let uptime = ProcessInfo.processInfo.systemUptime
+        for display in snugDisplaysOnlineSince.keys where !online.contains(display) && snugDisplaysGoneAt[display] == nil {
+            snugDisplaysGoneAt[display] = uptime
+        }
         for display in online {
-            if let last = snugDisplaysLastSeen[display], now.timeIntervalSince(last) <= Self.snugDisplayBlip {} else {
+            if snugDisplaysOnlineSince[display] == nil {
+                snugDisplaysOnlineSince[display] = now
+            } else if let gone = snugDisplaysGoneAt.removeValue(forKey: display), uptime - gone > Self.snugDisplayBlip {
                 snugDisplaysOnlineSince[display] = now
             }
-            snugDisplaysLastSeen[display] = now
         }
         let since = online.compactMap { snugDisplaysOnlineSince[$0] }.max()
         let stale = remotes.map(\.identity).filter { identity in
