@@ -37,15 +37,15 @@ package enum CrossDeskCheck {
         package var enumerated: [DisplayID]
         /// 此刻在线的 Snug 的屏
         package var onlineSnugDisplays: Set<DisplayID>
-        /// 此刻在线的屏（含 Snug 的）
-        package var onlineDisplays: Set<DisplayID>
+        /// 此刻在线的屏（含 Snug 的），按系统列出的顺序
+        package var onlineDisplays: [DisplayID]
         /// 回看的这段时间里，它的日志记了几次远程开始（有控制端连上、开始抓屏）
         package var sessionsInLog: Int
         /// 同一段时间里，Snug 日志记了几次「检测到 CrossDesk 连入」
         package var detectionsInSnugLog: Int
 
         package init(version: String?, running: Bool, signals: CrossDeskSignals, logReadable: Bool, enumerated: [DisplayID],
-                     onlineSnugDisplays: Set<DisplayID>, onlineDisplays: Set<DisplayID>, sessionsInLog: Int, detectionsInSnugLog: Int) {
+                     onlineSnugDisplays: Set<DisplayID>, onlineDisplays: [DisplayID], sessionsInLog: Int, detectionsInSnugLog: Int) {
             self.version = version
             self.running = running
             self.signals = signals
@@ -102,11 +102,11 @@ package enum CrossDeskCheck {
         guard f.logReadable else {
             return Item(status: .warn, title: title, detail: "读不到 CrossDesk 的日志（\(CrossDeskLogRecord.path.path)），看不出它启动时读到了哪些显示器")
         }
-        // 它按启动时登记的几个位置切显示器，编号变了的屏占原来那块不在了的位置照样切得到（RegisteredDisplays）
+        // 它按启动时登记的几个位置切显示器，编号变了的屏落在原来那块不在了的位置上照样切得到（RegisteredDisplays）
         let unseen = f.onlineSnugDisplays.subtracting(f.enumerated).sorted().map { "#\($0)" }.joined(separator: "、")
         guard !RegisteredDisplays.misses(f.enumerated, snug: f.onlineSnugDisplays, online: f.onlineDisplays) else {
             return Item(status: .fail, title: title,
-                        detail: "CrossDesk 启动时登记了 \(f.enumerated.count) 块显示器，Snug 的屏 \(unseen) 没有空出的位置可占："
+                        detail: "CrossDesk 启动时登记了 \(f.enumerated.count) 块显示器，Snug 的屏 \(unseen) 没落在哪个空出的位置上："
                             + "它切不过去（它只在启动时读一次显示器），屏建好之后重启 CrossDesk")
         }
         let list = f.enumerated.map { "#\($0)" }.joined(separator: "、")

@@ -246,7 +246,7 @@ final class AppController: Sendable {
             }
         }
         let since = online.compactMap { snugDisplaysOnlineSince[$0] }.max()
-        let all = Screens.online().map(Set.init)
+        let all = Screens.online()
         let stale = remotes.map(\.identity).filter { identity in
             guard identity.readsDisplaysOnce, let since else { return false }
             if let registered = readings.first(where: { $0.remote == identity })?.observation.registeredDisplays, let all {
