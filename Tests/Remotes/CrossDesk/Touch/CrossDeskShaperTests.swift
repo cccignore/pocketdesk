@@ -36,10 +36,9 @@ struct CrossDeskShaperTests {
         #expect(shaper.shape(event(.move, 100, 380, 1.04)) == [ShapedInput(TouchInput(.drag, at: CGPoint(x: 100, y: 340), time: 1.02, synthetic: true), fromCurrent: false)])
         #expect(shaper.deadline == 1.04 + CrossDeskShaper.strokeTimeout)
         #expect(shaper.expire(now: 1.05).isEmpty)
-        let last = CGPoint(x: 100, y: 380)
+        // 压着的最后一下扔掉（可能是按下晚到的点按前导），抬起记在交出去的最后一下
         #expect(shaper.expire(now: 1.04 + CrossDeskShaper.strokeTimeout) == [
-            ShapedInput(TouchInput(.drag, at: last, time: 1.04, synthetic: true), fromCurrent: false),
-            ShapedInput(TouchInput(.release, at: last, time: 1.04, synthetic: true), fromCurrent: false),
+            ShapedInput(TouchInput(.release, at: CGPoint(x: 100, y: 340), time: 1.02, synthetic: true), fromCurrent: false),
         ])
         #expect(shaper.deadline == nil)
         // 孤零零的一下移动（两指点右键前、悬停一下）到点就扔掉，什么都不交
@@ -64,15 +63,31 @@ struct CrossDeskShaperTests {
         #expect(shaper.shape(event(.move, 100, 360, 6.02)).map(\.input.synthetic) == [true])
     }
 
-    @Test("滑到一半按下（滑完马上点）：先把已经滑的那一笔收掉（抬起记在点按前导之前的最后一下），点按的前导不算进滑动")
+    @Test("相邻两下移动隔得远（超过 maxStep）是两个手势：已经开始的那一笔收掉（压着的那下离它近，算它的），孤零零的一下扔掉，远处那下重新开始")
+    func farMoveStartsAnotherGesture() {
+        var shaper = CrossDeskShaper()
+        _ = shaper.shape(event(.move, 100, 300, 1))
+        _ = shaper.shape(event(.move, 100, 340, 1.02))
+        #expect(shaper.shape(event(.move, 400, 900, 1.05)) == [
+            ShapedInput(TouchInput(.drag, at: CGPoint(x: 100, y: 340), time: 1.02, synthetic: true), fromCurrent: false),
+            ShapedInput(TouchInput(.release, at: CGPoint(x: 100, y: 340), time: 1.02, synthetic: true), fromCurrent: false),
+        ])
+        // 孤零零的一下之后远处来了一下：扔掉前一下，什么都不交
+        var single = CrossDeskShaper()
+        _ = single.shape(event(.move, 100, 300, 1))
+        #expect(single.shape(event(.move, 400, 900, 1.05)).isEmpty)
+        #expect(single.shape(event(.move, 400, 940, 1.07)).map(\.input.location) == [CGPoint(x: 400, y: 900)])
+    }
+
+    @Test("滑到一半按下（滑完马上在终点附近点）：先把已经滑的那一笔收掉（抬起记在点按前导之前的最后一下），点按的前导不算进滑动")
     func pressFinishesStartedStroke() {
         var shaper = CrossDeskShaper()
         _ = shaper.shape(event(.move, 100, 300, 1))
         _ = shaper.shape(event(.move, 100, 340, 1.02))
-        _ = shaper.shape(event(.move, 400, 900, 1.05))   // 点按的前导：在点的地方
-        #expect(shaper.shape(event(.leftDown, 400, 900, 1.051)) == [
+        _ = shaper.shape(event(.move, 120, 360, 1.05))   // 点按的前导：在点的地方，离终点近
+        #expect(shaper.shape(event(.leftDown, 120, 360, 1.051)) == [
             ShapedInput(TouchInput(.release, at: CGPoint(x: 100, y: 340), time: 1.02, synthetic: true), fromCurrent: false),
-            ShapedInput(TouchInput(.press, at: CGPoint(x: 400, y: 900), time: 1.051 - CrossDeskShaper.holdDelay), fromCurrent: true),
+            ShapedInput(TouchInput(.press, at: CGPoint(x: 120, y: 360), time: 1.051 - CrossDeskShaper.holdDelay), fromCurrent: true),
         ])
     }
 
@@ -115,7 +130,7 @@ struct CrossDeskShaperTests {
         #expect(phases(pipeline.handle(event(.move, 100, 360, 0.04), from: 0, regions: [phone])) == [.began, .changed])
         for i in 3...5 { _ = pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.02 * Double(i)), from: 0, regions: [phone]) }
         let deadline = try! #require(pipeline.deadline)
-        #expect(phases(pipeline.expire(now: deadline, regions: [phone])) == [.changed, .ended])
+        #expect(phases(pipeline.expire(now: deadline, regions: [phone])) == [.ended])
         #expect(pipeline.isCoasting)
 
         var outside = TouchPipeline(shapers: [CrossDeskShaper()])
@@ -152,5 +167,39 @@ struct CrossDeskShaperTests {
         // 滑的每一步最多 30 点：跳到点的地方会是几百点的一步
         #expect(deltas.allSatisfy { abs($0) <= 31 })
         #expect(commands(pipeline.handle(event(.leftUp, 400, 900, 0.152), from: 0, regions: [phone])).isEmpty)
+    }
+
+    @Test("端到端：点按的按下晚到（前导之后超过收尾时间才来）：滚动也不跳到点的地方")
+    func lateDownAfterSwipeDoesNotJump() {
+        var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])
+        var deltas: [Double] = []
+        func take(_ step: TouchStep) { deltas += commands(step).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } } }
+        for i in 0...5 { take(pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.02 * Double(i)), from: 0, regions: [phone])) }
+        take(pipeline.handle(event(.move, 400, 900, 0.16), from: 0, regions: [phone]))
+        take(pipeline.expire(now: 0.29, regions: [phone]))
+        take(pipeline.handle(event(.leftDown, 400, 900, 0.29), from: 0, regions: [phone]))
+        #expect(deltas.allSatisfy { abs($0) <= 31 })
+    }
+
+    @Test("端到端：惯性中先来孤零零的一下移动（两指点右键的前导），再在远处点一下：仍只是停住，不点到内容")
+    func strayMoveThenTapDuringCoast() {
+        var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])
+        for i in 0...5 { _ = pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.02 * Double(i)), from: 0, regions: [phone]) }
+        _ = pipeline.expire(now: try! #require(pipeline.deadline), regions: [phone])
+        #expect(pipeline.isCoasting)
+        _ = pipeline.handle(event(.move, 300, 200, 0.4), from: 0, regions: [phone])
+        _ = pipeline.handle(event(.move, 100, 800, 0.45), from: 0, regions: [phone])
+        _ = pipeline.handle(event(.leftDown, 100, 800, 0.451), from: 0, regions: [phone])
+        #expect(commands(pipeline.handle(event(.leftUp, 100, 800, 0.452), from: 0, regions: [phone])).isEmpty)
+    }
+
+    @Test("端到端：两下甩得很快（间隔不到收尾时间、落在别处）：分成两笔，第二笔不从第一笔的终点跳过去")
+    func twoQuickFlicksStaySeparate() {
+        var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])
+        var deltas: [Double] = []
+        func take(_ step: TouchStep) { deltas += commands(step).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } } }
+        for i in 0...4 { take(pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.02 * Double(i)), from: 0, regions: [phone])) }
+        for i in 0...4 { take(pipeline.handle(event(.move, 100, 200 + 30 * Double(i), 0.1 + 0.02 * Double(i)), from: 0, regions: [phone])) }
+        #expect(deltas.allSatisfy { abs($0) <= 31 })
     }
 }

@@ -6,7 +6,8 @@
 // 整理成翻译器认的形态：
 // - 不按键的移动拼成一笔（只能是滚动），停手 strokeTimeout 没有新的移动就当松手。每一下都先压着，等下一个事件来了再交：
 //   紧跟着按下的那一下是点按、长按的前导（在点的地方），不是滑动。不压的话它会停掉惯性、让后面的按下补发点击，
-//   滑完马上点时还会让滚动一下跳到点的地方
+//   滑完马上点时还会让滚动一下跳到点的地方。到点收尾时压着的那下也扔掉：按下可能晚到（网络重传）
+// - 相邻两下隔得比 maxStep 远是两个手势（点按前导、甩完马上又甩一下、孤零零的一下之后开始滑），不连成一笔
 // - 按下的时刻往前推 holdDelay，还原手指真正落下的时刻：翻译器按 iPhone 的习惯判点击、长按右键、长按选择照旧成立
 // 不按键的移动都原样放行（指针跟着手指走，和 CrossDesk 本来一样），整理出的输入都不代表它。
 // 两个时长取自源码、没有真机标定：真机上判错了先看这里
@@ -19,6 +20,9 @@ package struct CrossDeskShaper: TouchShaper {
     /// 不按键的移动停了这么久没再来，就当手指已经离开：它不发抬起，只能等。
     /// 太短会把慢慢滑的一笔断成几笔，太长甩完要多等这么久才开始惯性
     package static let strokeTimeout: TimeInterval = 0.12
+    /// 同一笔里相邻两下移动最远隔这么多点（Snug 屏的点）：手指一下挪不了这么远，再远的是另一个手势。
+    /// 甩得最快时每下二三十点（120Hz）；网络丢包让中间缺几下也还在里面
+    package static let maxStep: CGFloat = 100
 
     package let kinds: Set<PointerEvent.Kind> = [.leftDown, .leftDrag, .leftUp, .move]
     /// 压着还没交的那一下不按键的移动
@@ -37,9 +41,15 @@ package struct CrossDeskShaper: TouchShaper {
         case .move where leftHeld, .leftDrag:
             return [current(.drag, event)]
         case .move:
-            let flushed = flushHeld()
+            var out: [ShapedInput] = []
+            if let last = held, hypot(event.location.x - last.point.x, event.location.y - last.point.y) > Self.maxStep {
+                // 隔得远：另一个手势。压着的那下离已经开始的那一笔近，算它的；孤零零的一下扔掉
+                out = (stroke == nil ? [] : flushHeld()) + finishStroke()
+                held = nil
+            }
+            out += flushHeld()
             held = (event.location, event.time)
-            return flushed
+            return out
         case .leftDown:
             leftHeld = true
             // 压着的那一下是这次按下的前导，扔掉
@@ -53,11 +63,11 @@ package struct CrossDeskShaper: TouchShaper {
         }
     }
 
+    /// 压着的那下扔掉：它可能是按下晚到的点按前导，交出去滚动就会跳到点的地方；真滑的话只少最后一下
     package mutating func expire(now: TimeInterval) -> [ShapedInput] {
         guard let deadline, now >= deadline else { return [] }
-        let flushed = stroke == nil ? [] : flushHeld()
         held = nil
-        return flushed + finishStroke()
+        return finishStroke()
     }
 
     /// 交出压着的那一下：一笔的第一下当按下，之后当拖动
