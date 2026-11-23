@@ -1,8 +1,7 @@
 // CrossDesk 自己的日志（~/Library/Logs/CrossDesk/crossdesk.log，本地时间）。发布版（v1.7.6 真机）每行是
 // 「[年-月-日 时:分:秒.毫秒] [crossdesk] [级别] [源文件:行号] 内容」，源码位置那段按 spdlog 默认格式可能没有，两种都认。
-// 只给诊断用（--dump-remote、--check-remote）：在场判断看电源断言，不看日志。
-// 最要紧的一条是它启动时读到了哪些显示器：它只在启动时读一次，之后加的屏看不到（源码 screen_capturer_sck_impl.mm），
-// Snug 的屏不在这一批里，就要在屏建好之后重启 CrossDesk
+// 在场判断看电源断言，不看日志。日志用在两处：诊断（--dump-remote、--check-remote），和它这次启动登记了哪些显示器：
+// 它只在启动时读一次，按当时的块数分位置（源码 screen_capturer_sck_impl.mm），Snug 的屏切不切得到看 RegisteredDisplays
 import Foundation
 import SnugCore
 
@@ -14,7 +13,12 @@ package struct CrossDeskLogRecord: Equatable, Sendable {
         case lastControllerLeft
         /// 启动时读到一块显示器（「macOS display discovered: index=…, display_id=…」）
         case displayDiscovered(index: Int, display: DisplayID)
+        /// 读完显示器、抓屏初始化成功（「Init screen capturer success」）：这一批写完了
+        case captureInitialized
     }
+
+    /// 认这几种事件要的行里都有的字样：读日志时先按它挑出来再解析日期（日志最多约 20MB，逐行解析日期要好几秒）
+    package static let enumerationMarkers = ["macOS display discovered:", "Init screen capturer success"]
 
     package var date: Date
     /// 认不出的内容为 nil
@@ -31,22 +35,32 @@ package struct CrossDeskLogRecord: Equatable, Sendable {
         event = Self.event(in: message)
     }
 
-    /// 最近一次启动时读到的显示器，按它的顺序。index 从 0 重新数起就是新的一批
+    /// 最近一次启动时读到的显示器，按它的顺序（不管写没写完，诊断用）。index 从 0 重新数起就是新的一批
     package static func lastEnumeration(_ records: [CrossDeskLogRecord]) -> [DisplayID] {
-        enumeration(since: .distantPast, in: records) ?? []
+        lastBatch(records)?.displays ?? []
     }
 
-    /// 最后一批在 since 之后（含）才开始读的显示器：since 取这个进程的启动时刻，就是这次启动登记的那几块。
-    /// 刚启动、还没读到为 nil。它按这几个位置注册视频流，之后编号变了的屏落在同一位置照样切得到（screen_capturer_sck_impl.mm）
+    /// 这次启动登记的显示器：最后一批在 since（这个进程的启动时刻）之后才开始读、而且抓屏初始化成功了。
+    /// 刚启动还没写完、初始化失败（没有录屏权限）为 nil：只写了一半的那一批会少算块数
     package static func enumeration(since: Date, in records: [CrossDeskLogRecord]) -> [DisplayID]? {
-        var batch: (start: Date, displays: [DisplayID])?
-        for record in records {
-            guard case .displayDiscovered(let index, let display) = record.event else { continue }
-            if index == 0 || batch == nil { batch = (record.date, []) }
-            batch?.displays.append(display)
-        }
-        guard let batch, batch.start >= since else { return nil }
+        guard let batch = lastBatch(records), batch.start >= since, batch.complete else { return nil }
         return batch.displays
+    }
+
+    private static func lastBatch(_ records: [CrossDeskLogRecord]) -> (start: Date, displays: [DisplayID], complete: Bool)? {
+        var batch: (start: Date, displays: [DisplayID], complete: Bool)?
+        for record in records {
+            switch record.event {
+            case .displayDiscovered(let index, let display):
+                if index == 0 || batch == nil || batch?.complete == true { batch = (record.date, [], false) }
+                batch?.displays.append(display)
+            case .captureInitialized:
+                batch?.complete = true
+            default:
+                continue
+            }
+        }
+        return batch
     }
 
     private static let dateFormat: DateFormatter = {
@@ -85,6 +99,7 @@ package struct CrossDeskLogRecord: Equatable, Sendable {
     private static func event(in message: Substring) -> Event? {
         if message.hasPrefix("Start screen capturer") { return .captureStarted }
         if message.hasPrefix("Last remote controller disconnected") { return .lastControllerLeft }
+        if message.hasPrefix("Init screen capturer success") { return .captureInitialized }
         guard message.hasPrefix("macOS display discovered:"),
               let index = number(after: "index=", in: message), let display = number(after: "display_id=", in: message),
               let id = DisplayID(exactly: display) else { return nil }

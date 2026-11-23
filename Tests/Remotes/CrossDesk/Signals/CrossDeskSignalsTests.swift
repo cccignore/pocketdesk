@@ -14,10 +14,10 @@ struct CrossDeskSignalsTests {
         #expect(CrossDeskSignals(running: true, sharing: nil).observation().evidence == "进程=在 共享桌面=读不到")
         #expect(!CrossDeskSignals(running: true, sharing: nil).observation().present)
         // 它这次启动登记了几块显示器，交给核心判断要不要重启它；不改信号快照
-        let slotted = CrossDeskSignals(running: true, sharing: false, slots: 2).observation()
-        #expect(slotted.displaySlots == 2)
+        let slotted = CrossDeskSignals(running: true, sharing: false, registered: [1, 22]).observation()
+        #expect(slotted.registeredDisplays == [1, 22])
         #expect(slotted.evidence == "进程=在 共享桌面=否")
-        #expect(CrossDeskSignals(running: true, sharing: false).observation().displaySlots == nil)
+        #expect(CrossDeskSignals(running: true, sharing: false).observation().registeredDisplays == nil)
     }
 
     @Test("身份：按记号认注入的事件（界面和注入是同一个程序），资源库排除 CrossDesk 自己")
@@ -79,12 +79,23 @@ struct CrossDeskLogTests {
         #expect(CrossDeskLogRecord.lastEnumeration([]).isEmpty)
     }
 
-    @Test("这次启动读到的那一批：取在启动时刻之后开始的最后一批；刚启动还没读到时为 nil")
+    @Test("这次启动登记的那一批：取启动时刻之后开始、抓屏初始化成功了的最后一批；刚启动还没写完、初始化失败为 nil")
     func enumerationSinceLaunch() throws {
-        let records = sample.split(separator: "\n").compactMap { CrossDeskLogRecord(line: String($0)) }
-        let second = try #require(records.first { $0.event == .displayDiscovered(index: 1, display: 7) }?.date)
-        #expect(CrossDeskLogRecord.enumeration(since: second.addingTimeInterval(-60), in: records) == [1, 7])
-        #expect(CrossDeskLogRecord.enumeration(since: second.addingTimeInterval(60), in: records) == nil)
+        let log = """
+        [2026-11-24 03:00:00.000] [crossdesk] [info] [screen_capturer_sck_impl.mm:426] macOS display discovered: index=0, display_id=1, name='Built-in Retina Display'
+        [2026-11-24 03:00:00.001] [crossdesk] [info] [screen_capturer_sck_impl.mm:426] macOS display discovered: index=1, display_id=22, name='Snug 手机屏'
+        [2026-11-24 03:00:00.002] [crossdesk] [info] [session_device_manager.cpp:303] Init screen capturer success
+        [2026-11-24 04:00:00.000] [crossdesk] [info] [screen_capturer_sck_impl.mm:426] macOS display discovered: index=0, display_id=1, name='Built-in Retina Display'
+        """
+        let records = log.split(separator: "\n").compactMap { CrossDeskLogRecord(line: String($0)) }
+        #expect(records[2].event == .captureInitialized)
+        let first = records[0].date
+        // 03:00 那次启动：登记了 #1、#22
+        #expect(CrossDeskLogRecord.enumeration(since: first.addingTimeInterval(-1), in: Array(records.prefix(3))) == [1, 22])
+        // 只写了一半（index=1 和初始化成功还没写）
+        #expect(CrossDeskLogRecord.enumeration(since: first.addingTimeInterval(-1), in: Array(records.prefix(1))) == nil)
+        // 04:00 又启动了一次，还没写完：不拿上一次的顶替
+        #expect(CrossDeskLogRecord.enumeration(since: first.addingTimeInterval(3599), in: records) == nil)
         #expect(CrossDeskLogRecord.enumeration(since: .distantPast, in: []) == nil)
     }
 }

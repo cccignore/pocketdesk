@@ -7,7 +7,7 @@ private let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
 private func facts(_ change: (inout CrossDeskCheck.Facts) -> Void = { _ in }) -> CrossDeskCheck.Facts {
     var f = CrossDeskCheck.Facts(version: "1.4.0", running: true, signals: CrossDeskSignals(running: true, sharing: false),
-                                 logReadable: true, enumerated: [1, 7], onlineSnugDisplays: [7], onlineDisplays: 2,
+                                 logReadable: true, enumerated: [1, 7], onlineSnugDisplays: [7], onlineDisplays: [1, 7],
                                  sessionsInLog: 2, detectionsInSnugLog: 2)
     change(&f)
     return f
@@ -27,7 +27,7 @@ struct CrossDeskCheckTests {
 
     @Test("此刻在线的显示器比 CrossDesk 启动时登记的多：多出来的它切不过去，报错，说明要重启 CrossDesk")
     func snugScreenUnseen() {
-        let items = CrossDeskCheck.evaluate(facts { $0.enumerated = [1]; $0.onlineSnugDisplays = [7, 9]; $0.onlineDisplays = 3 })
+        let items = CrossDeskCheck.evaluate(facts { $0.enumerated = [1]; $0.onlineSnugDisplays = [7, 9]; $0.onlineDisplays = [1, 7, 9] })
         let item = items.first { $0.title == "看得到 Snug 的屏" }
         #expect(item?.status == .fail)
         #expect(item?.detail.contains("#7、#9") == true)
@@ -36,9 +36,16 @@ struct CrossDeskCheckTests {
 
     @Test("Snug 重启过、屏换了编号：块数没超过 CrossDesk 登记的，它按位置补位照样切得到，不报错")
     func renumberedScreen() {
-        let item = CrossDeskCheck.evaluate(facts { $0.enumerated = [1, 7]; $0.onlineSnugDisplays = [9] }).first { $0.title == "看得到 Snug 的屏" }
+        let item = CrossDeskCheck.evaluate(facts { $0.enumerated = [1, 7]; $0.onlineSnugDisplays = [9]; $0.onlineDisplays = [1, 9] })
+            .first { $0.title == "看得到 Snug 的屏" }
         #expect(item?.status == .ok)
         #expect(item?.detail.contains("#9") == true)
+    }
+
+    @Test("之后接上了外接屏（没登记过）：Snug 的屏都登记过，照样切得到，不报错")
+    func laterExternalDisplay() {
+        let item = CrossDeskCheck.evaluate(facts { $0.onlineDisplays = [1, 7, 12] }).first { $0.title == "看得到 Snug 的屏" }
+        #expect(item?.status == .ok)
     }
 
     @Test("没装是错；没在跑、此刻没有 Snug 的屏在线、读不到日志只提醒")

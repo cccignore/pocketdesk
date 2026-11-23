@@ -286,6 +286,26 @@ struct CrossDeskShaperTests {
         #expect(deltas.allSatisfy { abs($0) <= 31 })
     }
 
+    @Test("端到端：卡住的那一阵里前一甩收得慢（最后一步 5 点），尾巴和后一甩的开头挤在一起到：不连过去")
+    func slowTailThenBunchedHead() {
+        func run(expireBetween: Bool, tail: [(Double, Double)], head: Double) -> [Double] {
+            var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])
+            var deltas: [Double] = []
+            func take(_ step: TouchStep) { deltas += commands(step).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } } }
+            for i in 0...2 { take(pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.016 * Double(i)), from: 0, regions: [phone])) }
+            if expireBetween { take(pipeline.expire(now: try! #require(pipeline.deadline), regions: [phone])) }
+            for (y, t) in tail { take(pipeline.handle(event(.move, 100, y, t), from: 0, regions: [phone])) }
+            for i in 0...2 { take(pipeline.handle(event(.move, 100, 90 + 30 * Double(i), head + 0.0005 * Double(i)), from: 0, regions: [phone])) }
+            return deltas
+        }
+        // 卡得比收尾时间短：尾巴还在这一笔里
+        #expect(run(expireBetween: false, tail: [(370, 0.1), (375, 0.1005)], head: 0.101).allSatisfy { abs($0) <= 31 })
+        // 卡得比收尾时间长：尾巴两下自成一笔
+        #expect(run(expireBetween: true, tail: [(370, 0.3), (375, 0.3002)], head: 0.3005).allSatisfy { abs($0) <= 31 })
+        // 卡了 0.7 秒，只剩一下尾巴
+        #expect(run(expireBetween: true, tail: [(390, 0.7)], head: 0.7005).allSatisfy { abs($0) <= 31 })
+    }
+
     @Test("端到端：快甩（60Hz，每下隔 110 点）照样滚动并带惯性")
     func fastFlickScrolls() {
         var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])

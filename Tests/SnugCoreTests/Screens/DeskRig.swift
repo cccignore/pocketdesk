@@ -85,6 +85,7 @@ final class OneScreen {
         var dismissed = false
         var closeButton: CloseButton?
         var keyboardRoom = false
+        var keyboardKeep: Double?
         var display: DisplayID? { screen.display }
     }
 
@@ -120,7 +121,7 @@ final class OneScreen {
         let d = s.desks[id] ?? Desk.State()
         return State(screen: d.screen, placed: d.placed, listVisible: d.listVisible, work: d.work, notice: d.notice,
                      quitting: s.quitting, closing: s.closing, dismissed: s.dismissed.contains(id), closeButton: d.closeButton,
-                     keyboardRoom: d.keyboardRoom)
+                     keyboardRoom: d.keyboardRoom, keyboardKeep: d.keyboardKeep)
     }
 
     var wish: ScreenWish { ScreenWish(id: id, spec: phoneSpec, fit: fit, behavior: .touchScreen) }

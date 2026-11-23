@@ -228,10 +228,10 @@ final class AppController: Sendable {
                                           preview: preview, resident: resident, insets: state.clientInsets))
     }
 
-    /// 只在启动时读一次显示器的远控，按启动时登记的块数切显示器，多出来的屏切不过去。开机时两个都自动打开，谁先谁后说不准：
-    /// 每拍看一眼，列进 staleRemotes，菜单栏给「重启」。远控报了登记几块（RemoteObservation.displaySlots）时只看块数：
-    /// Snug 重启后屏换了编号，落在它登记的位置里照样切得到，不用重启。没报时按启动时刻比：远控的进程比此刻在线的哪块屏
-    /// 这一次上线早就算看不到（屏上线和下一拍之间启动的会误报一次，重启无害）
+    /// 只在启动时读一次显示器的远控，按启动时登记的几块分位置切显示器，Snug 的屏没有位置可占就切不过去。开机时两个都自动打开，
+    /// 谁先谁后说不准：每拍看一眼，列进 staleRemotes，菜单栏给「重启」。远控报了登记了哪些（RemoteObservation.registeredDisplays）时
+    /// 按 RegisteredDisplays 判：Snug 重启后屏换了编号，占原来那块的位置照样切得到，不用重启。没报时按启动时刻比：远控的进程比
+    /// 此刻在线的哪块屏这一次上线早就算看不到（屏上线和下一拍之间启动的会误报一次，重启无害）
     private func refreshStaleRemotes(at now: Date, readings: [RemoteReading]) {
         let online = Set(state.desks.desks.values.compactMap(\.display))
         let uptime = ProcessInfo.processInfo.systemUptime
@@ -246,11 +246,11 @@ final class AppController: Sendable {
             }
         }
         let since = online.compactMap { snugDisplaysOnlineSince[$0] }.max()
-        let displays = Screens.standalone()?.count
+        let all = Screens.online().map(Set.init)
         let stale = remotes.map(\.identity).filter { identity in
             guard identity.readsDisplaysOnce, let since else { return false }
-            if let slots = readings.first(where: { $0.remote == identity })?.observation.displaySlots, let displays {
-                return displays > slots
+            if let registered = readings.first(where: { $0.remote == identity })?.observation.registeredDisplays, let all {
+                return RegisteredDisplays.misses(registered, snug: online, online: all)
             }
             let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
             return apps.contains { ($0.launchDate ?? .distantFuture) < since }

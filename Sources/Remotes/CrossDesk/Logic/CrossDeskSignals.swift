@@ -10,19 +10,19 @@ package struct CrossDeskSignals: Equatable, Sendable, CustomStringConvertible {
     package var running: Bool
     /// 它持有「正在共享桌面」的电源断言。nil = 读不到（查电源断言失败）
     package var sharing: Bool?
-    /// 这次启动登记了几块显示器（日志里的那一批）。nil = 没在运行、还没读到、读不到日志
-    package var slots: Int?
+    /// 这次启动登记的显示器（日志里的那一批）。nil = 没在运行、还没读到、读不到日志
+    package var registered: [DisplayID]?
 
-    package init(running: Bool, sharing: Bool?, slots: Int? = nil) {
+    package init(running: Bool, sharing: Bool?, registered: [DisplayID]? = nil) {
         self.running = running
         self.sharing = sharing
-        self.slots = slots
+        self.registered = registered
     }
 
     package var isPresent: Bool { sharing == true }
 
     package func observation() -> RemoteObservation {
-        RemoteObservation(present: isPresent, controllers: [], streamedDisplay: nil, evidence: description, displaySlots: slots)
+        RemoteObservation(present: isPresent, controllers: [], streamedDisplay: nil, evidence: description, registeredDisplays: registered)
     }
 
     package var description: String {

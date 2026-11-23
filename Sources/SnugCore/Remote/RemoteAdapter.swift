@@ -93,16 +93,16 @@ public struct RemoteObservation: Equatable, Sendable {
     public var streamedDisplay: DisplayID?
     /// 写进连入、断开日志的信号快照：排查误判时才知道是哪一路信号在变
     public var evidence: String
-    /// 只在启动时读一次显示器的远控，这次启动登记了几块显示器：此刻在线的比这多，多出来的它切不过去，要重启它。
+    /// 只在启动时读一次显示器的远控，这次启动登记的显示器，按它的顺序：Snug 的屏切不切得到见 RegisteredDisplays。
     /// nil = 不知道（不读显示器的远控、还没读到），按它的启动时刻和屏的上线时刻判断
-    public var displaySlots: Int?
+    public var registeredDisplays: [DisplayID]?
 
-    public init(present: Bool, controllers: [String], streamedDisplay: DisplayID?, evidence: String, displaySlots: Int? = nil) {
+    public init(present: Bool, controllers: [String], streamedDisplay: DisplayID?, evidence: String, registeredDisplays: [DisplayID]? = nil) {
         self.present = present
         self.controllers = controllers
         self.streamedDisplay = streamedDisplay
         self.evidence = evidence
-        self.displaySlots = displaySlots
+        self.registeredDisplays = registeredDisplays
     }
 }
 

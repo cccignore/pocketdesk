@@ -123,9 +123,8 @@ final class ScreenWindows {
         homeBarView?.showsCamera = state.config.screenshot
 
         let showList = panel.listVisible || panel.placed == nil
-        // 键盘键：屏上放着窗口、这块屏按当前让位算得出键盘上方留几成（手机竖屏、远控声明了键盘多高）才有，和 Desk 判的是同一条
-        homeBarView?.showsKeyboard = !showList && panel.behavior.touch
-            && state.screen(id).map { ScreenPlan.fit(of: $0, insets: state.clientInsets).keyboardKeep != nil } == true
+        // 键盘键：屏上放着窗口、这块屏此刻的比例里有键盘上方留几成（手机竖屏、远控声明了键盘多高）才有，和 Desk 判的是同一个比例
+        homeBarView?.showsKeyboard = !showList && panel.behavior.touch && panel.keyboardKeep != nil
         homeBarView?.keyboardOn = panel.keyboardRoom
         let watching = state.watching(id)
         if showList { list.orderFrontRegardless() } else { list.orderOut(nil) }

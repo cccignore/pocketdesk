@@ -27,6 +27,8 @@ public final class Desk {
         public var notice: Notice?
         /// 屏上的窗口让出手机键盘的位置：只铺到键盘上方（输入框露在键盘上面），见 Desk.setKeyboardRoom
         public var keyboardRoom = false
+        /// 这块屏此刻的比例里键盘上方留几成（ScreenFit.keyboardKeep）：界面据此给不给键盘键，和 offersKeyboardRoom 判的是同一个比例
+        public var keyboardKeep: Double?
         /// 屏上那个窗口的关闭按钮（铺好后读的）。在手机上点它不直接关，先放回原位再关（见 DeskSet.closePlaced）。
         /// 在问用户的窗口（挂着「要存储吗」）不给：那时按钮是灰的，点它是想答对话框
         public var closeButton: CloseButton?
@@ -229,14 +231,17 @@ public final class Desk {
         if on { p.widthBeforeKeyboard = p.width } else { p.leaveKeyboardRoom() }
         Log.info("\(p.window.label) \(on ? "让出键盘的位置，只铺到键盘上方" : "铺回整屏")")
         let filled = await fill(&p) != nil
-        if on, !state.keyboardRoom {
-            // 铺到一半回了资源库（回资源库不排队）：照它的意思不让了，换回让位前那一档、忘掉铺完的样子，露出来时按整屏重铺
+        if state.listVisible {
+            // 铺到一半回了资源库（回资源库不排队，它已经清掉让位）：换回让位前那一档、忘掉铺完的样子，露出来时按整屏重铺。
+            // 没铺成也一样，露出来时照样重铺
             p.leaveKeyboardRoom()
             p.settled = nil
         } else if !filled {
-            // 窗口挪不动（App 卡住）：键盘键退回原来的状态，和窗口对得上；换档由下一次核对按原来那一档补
+            // 窗口挪不动（App 卡住）：键盘键退回原来的状态；窗口可能已经挪了一半（换档前那一下挪成了），
+            // 忘掉上次铺完的样子，下一次核对（换档会触发）按原来那一档重铺
             Log.warn("\(p.window.label) \(on ? "让出键盘" : "铺回整屏")没铺成（窗口读不到或挪不动），键盘键退回原来的状态")
             state.keyboardRoom = !on
+            placement?.settled = nil
             return
         }
         placement = p
@@ -246,6 +251,7 @@ public final class Desk {
     func screenChanged(_ screen: ScreenSet.State) {
         if screen.display != nil, state.display == nil { state.notice = nil }
         state.screen = screen
+        state.keyboardKeep = screenFit.keyboardKeep
     }
 
     // MARK: 放窗口
@@ -530,6 +536,7 @@ public final class Desk {
             return
         }
         state.notice = .reshaped
+        state.keyboardKeep = screenFit.keyboardKeep
         guard var p = placement else { return }
         // 窗口要的档位按新比例从基准宽度重新找；忘掉上次挪完的样子，露出来时一定重新铺。
         // 新比例未必声明键盘多高（换成了别家远控），不再让着键盘

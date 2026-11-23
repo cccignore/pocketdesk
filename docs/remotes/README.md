@@ -22,7 +22,7 @@ Snug 只对接 UU远程，但对接的部分是一层可替换的适配器：核
 | 类型 | 要交什么 |
 | :--- | :--- |
 | `RemoteIdentity` | 日志名（写进日志与命令行，不含空格、不和别家重名）；界面名；自家 App 的 bundle（不出现在资源库里）；注入事件怎么认（`InjectedEventSource`）；是不是只在启动时读一次显示器（`readsDisplaysOnce`，为真时屏常驻）；在手机上压住画面的部分（`clientInsets`，屏的比例按它让位，竖屏键盘盖住多高也在里面，默认是 UU 实测的工具栏）；注入文字时要不要把 Mac 换成英文输入法（`needsASCIIInputSource`） |
-| `RemoteObservation` | 在不在场：只在有正面证据时为真；控制端：认不出为空；推流屏：不知道为 nil；信号快照：写进连入、断开日志；只在启动时读一次显示器的远控，这次启动登记了几块显示器（`displaySlots`，不知道为 nil，核心改按启动时刻判断要不要重启它） |
+| `RemoteObservation` | 在不在场：只在有正面证据时为真；控制端：认不出为空；推流屏：不知道为 nil；信号快照：写进连入、断开日志；只在启动时读一次显示器的远控，这次启动登记的显示器（`registeredDisplays`，不知道为 nil，核心改按启动时刻判断要不要重启它；切不切得到见 `RegisteredDisplays`） |
 | `RemoteAdapter` | 静态的 `identity`（身份属于这家远控，登记处、诊断命令、运行中的实例都从这里取）；`init()`；`start()`、`stop()`；`sample(wallClock:)` 每拍调一次；`makeTouchShaper()` 手势整理，默认原样直通 |
 | `TouchShaper` | 定义在 `Sources/SnugCore/Touch/TouchShaper.swift`：把自家注入的原始指针事件整理成翻译器认的「按下 → 拖动 → 抬起」。要接管的事件种类、整理、不发抬起时的到点收尾。纯状态机，放各家的纯逻辑目标里，可以按 `TouchPipeline` 端到端测 |
 
