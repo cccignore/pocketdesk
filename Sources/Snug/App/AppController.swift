@@ -40,6 +40,8 @@ final class AppController: Sendable {
     private var resident = false
     /// 装着的远控（日志名）：手势只接管这几家
     private var installedRemotes: [String]?
+    /// 远程期间换成的英文输入法，远程结束换回（只对注入文字会被中文输入法再组一次字的远控）
+    private var inputSwap = InputSourceSwap()
     /// Snug 的屏每个编号这一次上线的时刻（墙钟，和远控进程的启动时刻比）：只在启动时读一次显示器的远控比它早启动就看不到这块屏。
     /// Snug 每次建屏编号都会变（真机实测 #13 → #14），新编号就是新上线
     private var snugDisplaysOnlineSince: [DisplayID: Date] = [:]
@@ -135,6 +137,7 @@ final class AppController: Sendable {
 
     /// 停止监控（退出收尾前调用）
     func stopMonitoring() {
+        restoreInputSource(because: "退出 Snug")
         tickTimer?.invalidate()
         tickTimer = nil
         watcher?.stop()
@@ -176,9 +179,27 @@ final class AppController: Sendable {
         }
         applyPlan()
         desks.setRemote(session.inEpisode)
+        swapInputSource(transitions)
         state.update(\.connection, session.isConnected ? .connected : (session.inEpisode ? .reconnecting : .idle))
         state.update(\.controllers, session.controllers)
         state.update(\.remoteName, session.owner?.displayName)
+    }
+
+    /// 远程开始（这一家注入的文字会被中文输入法再组一次字）时换成英文输入法，远程结束换回
+    private func swapInputSource(_ transitions: [SessionTransition]) {
+        if transitions.contains(where: { if case .began = $0 { true } else { false } }), session.owner?.needsASCIIInputSource == true,
+           let current = InputSources.current(),
+           let ascii = inputSwap.begin(current: current.id, currentIsASCII: current.isASCII, ascii: InputSources.asciiCapable()) {
+            let switched = InputSources.select(ascii)
+            Log.info("远程开始：输入法 \(current.id) → \(ascii)\(switched ? "" : "（没换成）")（\(session.owner?.displayName ?? "") 注入的文字会被中文输入法再组一次字，中文在手机上打）")
+        }
+        if transitions.contains(.ended) { restoreInputSource(because: "远程结束") }
+    }
+
+    private func restoreInputSource(because reason: String) {
+        guard let current = InputSources.current(), let original = inputSwap.end(current: current.id) else { return }
+        let switched = InputSources.select(original)
+        Log.info("\(reason)：输入法换回 \(original)\(switched ? "" : "（没换成）")")
     }
 
     /// 断开后远控不再动指针，而 Snug 的屏要等重连窗口才撤。这十几秒里指针若停在 Snug 的屏上，

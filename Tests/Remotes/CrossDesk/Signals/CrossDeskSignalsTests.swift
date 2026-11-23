@@ -25,6 +25,7 @@ struct CrossDeskSignalsTests {
         #expect(!identity.injector.matches(EventOrigin(executablePath: app)))
         #expect(!identity.injector.needsExecutablePath)
         #expect(identity.readsDisplaysOnce)
+        #expect(identity.needsASCIIInputSource)
     }
 }
 

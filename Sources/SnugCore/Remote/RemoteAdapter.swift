@@ -16,15 +16,18 @@ public struct RemoteIdentity: Equatable, Sendable {
     public let readsDisplaysOnce: Bool
     /// 它在手机上压住画面的部分：手机屏按它让位（见 ScreenFit）
     public let clientInsets: ClientInsets
+    /// 它把手机上打好的字当「按键 + 文字」注入：Mac 用中文输入法时会被再组一次字，远程期间换成英文输入法（见 InputSourceSwap）
+    public let needsASCIIInputSource: Bool
 
     public init(logName: String, displayName: String, bundleIDs: Set<String>, injector: InjectedEventSource, readsDisplaysOnce: Bool = false,
-                clientInsets: ClientInsets = .standard) {
+                clientInsets: ClientInsets = .standard, needsASCIIInputSource: Bool = false) {
         self.logName = logName
         self.displayName = displayName
         self.bundleIDs = bundleIDs
         self.injector = injector
         self.readsDisplaysOnce = readsDisplaysOnce
         self.clientInsets = clientInsets
+        self.needsASCIIInputSource = needsASCIIInputSource
     }
 }
 

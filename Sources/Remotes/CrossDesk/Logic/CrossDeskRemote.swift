@@ -14,8 +14,9 @@ package enum CrossDeskRemote {
     /// 「Fit video and input to the same unobscured area」）。按灵动岛机型的安全区让位：竖屏上 62 下 34，横屏左右各 62、下 21
     package static let clientInsets = ClientInsets(portraitVertical: 62 + 34, landscapeHorizontal: 62 + 62, landscapeVertical: 21)
 
-    /// 交给核心的身份：界面和注入是同一个程序，按记号认注入的事件；它只在启动时读一次显示器（源码 screen_capturer_sck_impl.mm），屏要常驻
+    /// 交给核心的身份：界面和注入是同一个程序，按记号认注入的事件；它只在启动时读一次显示器（源码 screen_capturer_sck_impl.mm），屏要常驻；
+    /// 手机上打的字按键码 0 加文字注入（keyboard_capturer.cpp），Mac 的中文输入法会再组一次字，远程期间换英文输入法
     package static let identity = RemoteIdentity(logName: "CrossDesk", displayName: "CrossDesk", bundleIDs: [bundleID],
                                                 injector: InjectedEventSource(marker: injectedMarker), readsDisplaysOnce: true,
-                                                clientInsets: clientInsets)
+                                                clientInsets: clientInsets, needsASCIIInputSource: true)
 }
