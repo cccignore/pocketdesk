@@ -300,7 +300,7 @@ scripts/snug install   # 构建、安装并打开
 
 **接入其他远控**：架构已调整就绪，核心不依赖任何一家远控，接一家新的只加它自己的适配器。欢迎提 PR 接入，或 fork 后自行接入：[接入新的远控](docs/remotes/README.md) · [设计记录](docs/remote-adapter/README.md)
 
-**CrossDesk**：开源远控 [CrossDesk](https://github.com/kunkundi/crossdesk) 已有适配（屏常驻、手势整理、兼容自检），用法与限制见 [CrossDesk 适配](docs/remotes/crossdesk.md)
+**CrossDesk**：开源远控 [CrossDesk](https://github.com/kunkundi/crossdesk) 已有适配（屏常驻、手势整理、画面铺满安全区、远程期间换英文输入法、小横条上的键盘键把窗口让到键盘上方、兼容自检），用法与限制见 [CrossDesk 适配](docs/remotes/crossdesk.md)
 
 ## 🧹 卸载
 
