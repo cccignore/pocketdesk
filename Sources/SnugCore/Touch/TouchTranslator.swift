@@ -5,6 +5,7 @@
 //   按住 0.5 秒松手 → 右键菜单（选区不丢，菜单里有拷贝、粘贴）
 //   点窗口自己的关闭按钮 → 不补发点击，交给 Snug 先把窗口放回原位再关（直接关，App 会存下屏上的大小和字号）
 // 远控把单指拖动当成鼠标拖动发过来（会选中文字；UU 实测，RustDesk 源码同样），滚动要两根手指，这里在 Mac 这一侧翻译回来。
+// 远控发来的形态不一样时（CrossDesk 单指滑动只发不按键的移动），先由发它的那一家的 TouchShaper 整理成按下 / 拖动 / 抬起再交进来。
 // 纯状态机：吃进远控的按下 / 拖动 / 抬起，吐出「原事件放不放行」和要补发的事件，时间由调用方给。
 // 只有范围（TouchRegion）里按下的那一下会被接管；之后的拖动、抬起跟着这一下走，手指滑出范围也一样。
 // 阈值按基准宽度标定，乘上范围带来的缩放倍数：屏换到更宽的一档时跟着放大，在手机上手感不变。
@@ -56,11 +57,15 @@ public struct TouchInput: Equatable, Sendable {
     public var location: CGPoint
     /// 单调时间（秒）
     public var time: TimeInterval
+    /// 这一笔是手势整理从不按键的移动里拼出来的（远控没发按下、抬起，见 TouchShaper）：
+    /// 只能是滚动，没有原事件可补发，所以不点击、不长按选择、不点右键
+    public var synthetic: Bool
 
-    public init(_ kind: Kind, at location: CGPoint, time: TimeInterval) {
+    public init(_ kind: Kind, at location: CGPoint, time: TimeInterval, synthetic: Bool = false) {
         self.kind = kind
         self.location = location
         self.time = time
+        self.synthetic = synthetic
     }
 }
 
@@ -118,6 +123,8 @@ public struct TouchTranslator: Sendable {
     private var pressStoppedCoast = false
     /// 这次按在窗口的关闭按钮上
     private var pressOnClose = false
+    /// 这一笔是拼出来的：只能是滚动
+    private var pressSynthetic = false
 
     public init() {}
 
@@ -154,6 +161,7 @@ public struct TouchTranslator: Sendable {
         scale = region.scale
         pressStoppedCoast = !stop.isEmpty
         pressOnClose = region.closeButton?.frame.contains(input.location) ?? false
+        pressSynthetic = input.synthetic
         phase = .pending(since: input.time)
         origin = input.location
         last = input.location
@@ -168,7 +176,7 @@ public struct TouchTranslator: Sendable {
             return .pass
         case .pending(let since):
             guard distance(input.location, origin) >= Self.slop * scale else { return .swallow() }
-            if input.time - since >= Self.holdDuration {
+            if !pressSynthetic, input.time - since >= Self.holdDuration {
                 // 按住后再拖：补发按下，接下来照旧拖动，就是原来的选择
                 phase = .selecting
                 return .swallow([.replayPress, .replayCurrent])
@@ -188,6 +196,7 @@ public struct TouchTranslator: Sendable {
             return .pass
         case .pending(let since):
             phase = .idle
+            if pressSynthetic { return .swallow() }
             if input.time - since >= Self.holdDuration {
                 return .swallow([.rightClick(at: origin)])
             }

@@ -1,5 +1,6 @@
-// 手势翻译的系统部分：一个事件监听，只接管远控注入、在某块范围里按下的鼠标左键（每块要翻译手势的屏一块），
-// 交给 TouchTranslator 判断，再照它说的补发点击、右键或滚动（事件怎么读、怎么拼见 TouchEvents）。本机的触控板、鼠标一律不碰。
+// 手势翻译的系统部分：一个事件监听，只接管远控注入的指针事件，交给 TouchPipeline（发它的那一家先整理，再由翻译器判断，
+// 只翻译在某块范围里按下的，每块要翻译手势的屏一块），再照它说的扣住、补发点击、右键或滚动（事件怎么读、怎么拼见 TouchEvents）。
+// 本机的触控板、鼠标一律不碰。
 // 跑在独立线程上：主线程会被建屏、搬窗口卡住，监听回调一慢，系统会让全机的鼠标跟着卡
 import CoreGraphics
 import Foundation
@@ -12,13 +13,13 @@ public final class TouchTap {
     /// 手势翻译管的范围（CGEvent 坐标），每块要翻译手势的屏一块。主线程写，监听线程读
     private let regions = OSAllocatedUnfairLock<[TouchRegion]>(initialState: [])
     private var session: TapSession?
-    /// 接管哪些进程注入的事件：各家已登记的远控
-    private let injectors: [InjectedEventSource]
+    /// 接管哪些远控注入的事件、各自怎么整理：各家已登记的远控
+    private let sources: [TouchSource]
     /// 手机上点了屏上那个窗口的关闭按钮（核对过、点击已经吞掉了），交回窗口编号：在主线程上调
     public var onCloseWindow: ((UInt32) -> Void)?
 
-    public init(injectors: [InjectedEventSource]) {
-        self.injectors = injectors
+    public init(sources: [TouchSource]) {
+        self.sources = sources
     }
 
     /// 只在这几块范围里翻译手势，一块都没有就关掉监听。范围变了（换档、屏幕重排）照样调，监听不用重开。
@@ -35,7 +36,7 @@ public final class TouchTap {
     /// 起监听线程，等它报告监听建没建成
     private func start() -> Bool {
         guard session == nil else { return true }
-        let next = TapSession(regions: regions, injectors: injectors) { [weak self] window in
+        let next = TapSession(regions: regions, sources: sources) { [weak self] window in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.onCloseWindow?(window) } }
         }
         guard next.start() else {
@@ -43,7 +44,7 @@ public final class TouchTap {
             return false
         }
         session = next
-        Log.info("手势翻译已开启（只接管 \(injectors.map(\.description).joined(separator: "、")) 发来、在 Snug 屏里的操作）")
+        Log.info("手势翻译已开启（只接管 \(sources.map(\.injector.description).joined(separator: "、")) 发来、在 Snug 屏里的操作）")
         return true
     }
 
@@ -64,16 +65,17 @@ private final class TapSession: @unchecked Sendable {
 
     // 以下只在监听线程上访问
     private var tap: CFMachPort?
-    private var translator = TouchTranslator()
+    private var pipeline: TouchPipeline
     private var heldPress: CGEvent?
     private var coastTimer: CFRunLoopTimer?
+    /// 不发抬起的远控那一笔到点收尾（TouchPipeline.deadline）
+    private var expireTimer: CFRunLoopTimer?
     private var injected: InjectedEvents
-    /// 这一下按在哪块范围里：之后的拖动、抬起跟着这一下走，手指滑出范围也一样
-    private var pressed: TouchRegion?
 
-    init(regions: OSAllocatedUnfairLock<[TouchRegion]>, injectors: [InjectedEventSource], closeWindow: @escaping @Sendable (UInt32) -> Void) {
+    init(regions: OSAllocatedUnfairLock<[TouchRegion]>, sources: [TouchSource], closeWindow: @escaping @Sendable (UInt32) -> Void) {
         self.regions = regions
-        injected = InjectedEvents(injectors: injectors)
+        injected = InjectedEvents(injectors: sources.map(\.injector))
+        pipeline = TouchPipeline(shapers: sources.map { $0.makeShaper() })
         self.closeWindow = closeWindow
     }
 
@@ -103,6 +105,7 @@ private final class TapSession: @unchecked Sendable {
             }
             tap = nil
             stopCoasting()
+            stopExpireTimer()
             heldPress = nil
             CFRunLoopStop(CFRunLoopGetCurrent())
         }
@@ -111,7 +114,7 @@ private final class TapSession: @unchecked Sendable {
 
     private func installTap() -> Bool {
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
-                                          eventsOfInterest: TouchEvents.mask, callback: Self.callback,
+                                          eventsOfInterest: TouchEvents.mask(pipeline.kinds), callback: Self.callback,
                                           userInfo: Unmanaged.passUnretained(self).toOpaque()) else { return false }
         self.tap = tap
         CFRunLoopAddSource(CFRunLoopGetCurrent(), CFMachPortCreateRunLoopSource(nil, tap, 0), .commonModes)
@@ -131,25 +134,38 @@ private final class TapSession: @unchecked Sendable {
             Log.warn("手势翻译的事件监听被系统停用（\(type == .tapDisabledByTimeout ? "回调超时" : "用户输入")），已重新开启")
             return pass
         }
-        guard let kind = TouchEvents.kind(of: type), !TouchEvents.isReplay(event), injected.contains(event) else { return pass }
+        guard let kind = TouchEvents.kind(of: type), !TouchEvents.isReplay(event), let source = injected.source(of: event) else { return pass }
 
-        let input = TouchInput(kind, at: event.location, time: ProcessInfo.processInfo.systemUptime)
-        if kind == .press { pressed = regions.withLock { $0 }.first { $0.frame.contains(event.location) } }
-        let region = pressed
-        let response = translator.handle(input, in: region)
-        if kind == .press, !response.passOriginal { heldPress = event.copy() }
-        response.commands.forEach { perform($0, current: event, region: region) }
-        if kind == .release { heldPress = nil }
-        if translator.isCoasting { startCoasting() }
-        return response.passOriginal ? pass : nil
+        let pointer = PointerEvent(kind, at: event.location, time: ProcessInfo.processInfo.systemUptime)
+        let step = pipeline.handle(pointer, from: source, regions: regions.withLock { $0 })
+        apply(step, current: event)
+        return step.passOriginal ? pass : nil
     }
 
-    private func perform(_ command: TouchCommand, current: CGEvent, region: TouchRegion?) {
+    /// 照分派的结果做：按顺序扣住、补发、作废；之后看要不要走惯性、要不要等收尾
+    private func apply(_ step: TouchStep, current: CGEvent?) {
+        for effect in step.effects {
+            switch effect {
+            case .hold: heldPress = current?.copy()
+            case .command(let command, let region): perform(command, current: current, region: region)
+            case .dropHeld: heldPress = nil
+            }
+        }
+        if pipeline.isCoasting { startCoasting() }
+        scheduleExpire()
+    }
+
+    private func perform(_ command: TouchCommand, current: CGEvent?, region: TouchRegion?) {
         switch command {
         case .replayPress:
             TouchEvents.post(heldPress)
             heldPress = nil
         case .replayCurrent:
+            // 到点收尾时手上没有原事件；整理器拼出来的那一笔不会要求补发（TouchInput.synthetic），走到这里是整理器的错
+            guard let current else {
+                Log.error("手势翻译：到点收尾时要求补发当前事件，可手上没有原事件（整理器不该在收尾时交出代表原事件的输入），已忽略")
+                return
+            }
             TouchEvents.post(current.copy())
         case .rightClick(let point):
             TouchEvents.rightClick(at: point).forEach(TouchEvents.post)
@@ -182,8 +198,8 @@ private final class TapSession: @unchecked Sendable {
     private func startCoasting() {
         guard coastTimer == nil else { return }
         let timer = CFRunLoopTimerCreateWithHandler(nil, CFAbsoluteTimeGetCurrent(), 1 / Momentum.frameRate, 0, 0) { [self] _ in
-            if let step = translator.momentumFrame() { TouchEvents.post(TouchEvents.scroll(step)) }
-            if !translator.isCoasting { stopCoasting() }
+            if let step = pipeline.momentumFrame() { TouchEvents.post(TouchEvents.scroll(step)) }
+            if !pipeline.isCoasting { stopCoasting() }
         }
         coastTimer = timer
         CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, .commonModes)
@@ -193,5 +209,24 @@ private final class TapSession: @unchecked Sendable {
         guard let timer = coastTimer else { return }
         CFRunLoopTimerInvalidate(timer)
         coastTimer = nil
+    }
+
+    /// 有一笔要等收尾：到 deadline 时交给整理器收掉。每处理一个事件重排一次，没有要等的就撤掉
+    private func scheduleExpire() {
+        stopExpireTimer()
+        guard let deadline = pipeline.deadline else { return }
+        let delay = max(0, deadline - ProcessInfo.processInfo.systemUptime)
+        let timer = CFRunLoopTimerCreateWithHandler(nil, CFAbsoluteTimeGetCurrent() + delay, 0, 0, 0) { [self] _ in
+            expireTimer = nil
+            apply(pipeline.expire(now: ProcessInfo.processInfo.systemUptime, regions: regions.withLock { $0 }), current: nil)
+        }
+        expireTimer = timer
+        CFRunLoopAddTimer(CFRunLoopGetCurrent(), timer, .commonModes)
+    }
+
+    private func stopExpireTimer() {
+        guard let timer = expireTimer else { return }
+        CFRunLoopTimerInvalidate(timer)
+        expireTimer = nil
     }
 }

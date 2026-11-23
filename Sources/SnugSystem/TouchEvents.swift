@@ -10,15 +10,27 @@ enum TouchEvents {
     /// eventSourceUserData 里的记号（'SNUG'）
     private static let marker: Int64 = 0x534E_5547
 
-    /// 接管的事件：只有鼠标左键（远控把手指的按下、拖动、抬起都当成左键发过来：UU 实测，RustDesk 源码同样）
-    static let mask = [CGEventType.leftMouseDown, .leftMouseDragged, .leftMouseUp].reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
+    /// 接管的事件：各家整理器要的并集（只登记 UU 时只有鼠标左键的按下、拖动、抬起）
+    static func mask(_ kinds: Set<PointerEvent.Kind>) -> CGEventMask {
+        kinds.map(type(of:)).reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
+    }
 
-    static func kind(of type: CGEventType) -> TouchInput.Kind? {
+    static func kind(of type: CGEventType) -> PointerEvent.Kind? {
         switch type {
-        case .leftMouseDown: .press
-        case .leftMouseDragged: .drag
-        case .leftMouseUp: .release
+        case .leftMouseDown: .leftDown
+        case .leftMouseDragged: .leftDrag
+        case .leftMouseUp: .leftUp
+        case .mouseMoved: .move
         default: nil
+        }
+    }
+
+    private static func type(of kind: PointerEvent.Kind) -> CGEventType {
+        switch kind {
+        case .leftDown: .leftMouseDown
+        case .leftDrag: .leftMouseDragged
+        case .leftUp: .leftMouseUp
+        case .move: .mouseMoved
         }
     }
 
@@ -69,12 +81,13 @@ struct InjectedEvents {
         needsPath = injectors.contains(where: \.needsExecutablePath)
     }
 
-    mutating func contains(_ event: CGEvent) -> Bool {
+    /// 是第几家注入的；nil = 不是远控注入的
+    mutating func source(of event: CGEvent) -> Int? {
         let pid = pid_t(event.getIntegerValueField(.eventSourceUnixProcessID))
-        guard pid > 0 else { return false }
+        guard pid > 0 else { return nil }
         let origin = EventOrigin(executablePath: needsPath ? path(of: pid) : "",
                                  userData: event.getIntegerValueField(.eventSourceUserData))
-        return injectors.contains { $0.matches(origin) }
+        return injectors.firstIndex { $0.matches(origin) }
     }
 
     private mutating func path(of pid: pid_t) -> String {

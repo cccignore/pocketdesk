@@ -14,6 +14,11 @@ private func input(_ kind: TouchInput.Kind, _ x: Double, _ y: Double, _ t: Doubl
     TouchInput(kind, at: CGPoint(x: x, y: y), time: t)
 }
 
+/// 整理器从不按键的移动里拼出来的一笔（远控没发按下、抬起）
+private func stitched(_ kind: TouchInput.Kind, _ x: Double, _ y: Double, _ t: Double) -> TouchInput {
+    TouchInput(kind, at: CGPoint(x: x, y: y), time: t, synthetic: true)
+}
+
 private func scrolls(_ r: TouchResponse) -> [ScrollStep] {
     r.commands.compactMap { if case .scroll(let s) = $0 { s } else { nil } }
 }
@@ -245,5 +250,34 @@ struct TouchTranslatorTests {
             _ = t.handle(input(.release, 100, 335, 0.1), in: screen)
             #expect(t.isCoasting == coasts)
         }
+    }
+
+    @Test("拼出来的一笔只能是滚动：慢慢拖过了长按的时间也不选，按住不动收尾也不点右键，没滑开收尾什么都不补发（没有原事件可补）")
+    func stitchedStrokeOnlyScrolls() {
+        var t = TouchTranslator()
+        #expect(t.handle(stitched(.press, 100, 300, 0), in: phone) == TouchResponse(passOriginal: false, commands: []))
+        #expect(scrolls(t.handle(stitched(.drag, 100, 360, 0.8), in: phone)).map(\.phase) == [.began, .changed])
+        #expect(scrolls(t.handle(stitched(.release, 100, 360, 0.9), in: phone)).map(\.phase) == [.ended])
+
+        _ = t.handle(stitched(.press, 100, 300, 2), in: phone)
+        #expect(t.handle(stitched(.release, 100, 300, 2.7), in: phone) == TouchResponse(passOriginal: false, commands: []))
+
+        _ = t.handle(stitched(.press, 100, 300, 3), in: phone)
+        _ = t.handle(stitched(.drag, 104, 303, 3.05), in: phone)
+        #expect(t.handle(stitched(.release, 104, 303, 3.1), in: phone) == TouchResponse(passOriginal: false, commands: []))
+    }
+
+    @Test("拼出来的一笔甩一下照样带惯性；手机屏外拼出来的照样放行")
+    func stitchedStrokeFlingsAndPassesOutside() {
+        var t = TouchTranslator()
+        _ = t.handle(stitched(.press, 100, 300, 0), in: phone)
+        for i in 1...5 { _ = t.handle(stitched(.drag, 100, 300 + 20 * Double(i), 0.02 * Double(i)), in: phone) }
+        _ = t.handle(stitched(.release, 100, 400, 0.1), in: phone)
+        #expect(t.isCoasting)
+        while t.momentumFrame() != nil {}
+
+        #expect(t.handle(stitched(.press, 100, 300, 1), in: elsewhere) == .pass)
+        #expect(t.handle(stitched(.drag, 100, 360, 1.1), in: elsewhere) == .pass)
+        #expect(t.handle(stitched(.release, 100, 360, 1.2), in: elsewhere) == .pass)
     }
 }

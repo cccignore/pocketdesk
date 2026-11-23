@@ -17,7 +17,7 @@ struct RemoteAdapterTests {
         #expect(source.needsExecutablePath)
     }
 
-    @Test("按进程认：事件自带什么记号都不影响（UU 不写记号，判法和以前一样）")
+    @Test("按进程认：事件自带什么记号都不影响（判法和只按进程认时一样）")
     func processIgnoresMarker() {
         let source = fakeRemote.injector
         #expect(source.matches(EventOrigin(executablePath: "/x/JiaServer", userData: 0x1234)))
@@ -34,7 +34,7 @@ struct RemoteAdapterTests {
         #expect(!source.needsExecutablePath)
     }
 
-    @Test("日志里的写法：按进程的写进程名（只登记 UU 时开启手势的日志逐字不变），按记号的写十六进制记号")
+    @Test("日志里的写法：按进程的写进程名（开启手势的日志和以前逐字一样），按记号的写十六进制记号")
     func injectorDescription() {
         #expect(fakeRemote.injector.description == "JiaServer")
         #expect(markedRemote.injector.description == "记号 0x42494E47")

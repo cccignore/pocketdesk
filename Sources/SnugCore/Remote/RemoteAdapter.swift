@@ -115,8 +115,26 @@ public protocol RemoteAdapter: AnyObject {
     func stop()
     /// 每拍调一次。wallClock 是墙钟（系统日志的时间戳是墙钟）；会话层另用单调时钟
     func sample(wallClock: Date) -> RemoteObservation
+    /// 这家的手势整理（见 TouchShaper）：每次开启手势翻译各建一份，在监听线程上用。默认原样直通
+    nonisolated static func makeTouchShaper() -> any TouchShaper
 }
 
 extension RemoteAdapter {
     public var identity: RemoteIdentity { Self.identity }
+
+    public nonisolated static func makeTouchShaper() -> any TouchShaper { DirectShaper() }
+
+    /// 手势翻译用的：认哪些事件是它注入的，怎么整理
+    public static var touchSource: TouchSource { TouchSource(injector: identity.injector) { Self.makeTouchShaper() } }
+}
+
+/// 手势翻译接管的一家远控
+public struct TouchSource: Sendable {
+    public let injector: InjectedEventSource
+    public let makeShaper: @Sendable () -> any TouchShaper
+
+    public init(injector: InjectedEventSource, makeShaper: @escaping @Sendable () -> any TouchShaper) {
+        self.injector = injector
+        self.makeShaper = makeShaper
+    }
 }
