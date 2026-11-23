@@ -30,4 +30,4 @@ extension RemoteDriver {
 }
 
 /// Sources/Remotes 下的每家远控都要有驱动（scripts/snug check 核对）
-let drivers: [any RemoteDriver] = [UUDriver()]
+let drivers: [any RemoteDriver] = [UUDriver(), CrossDeskDriver()]
