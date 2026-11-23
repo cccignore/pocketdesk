@@ -39,11 +39,32 @@ enum TouchEvents {
         event.getIntegerValueField(.eventSourceUserData) == marker
     }
 
-    /// 打上记号再发：监听再看到它时原样放行
+    /// 打上记号再发：监听再看到它时原样放行。
+    /// 这个字段只能写一次（本机实测）：远控注入时已经写过自己记号的（CrossDesk），拷贝上怎么改都还是它的记号，
+    /// 补发出去会被当成远控的新操作再截一次，点击永远到不了 App。这种用自己的事件源重建（见 rebuilt）；
+    /// 没写过的（UU）一次就写上，照旧原样发
     static func post(_ event: CGEvent?) {
-        guard let event else { return }
+        guard var event else { return }
         event.setIntegerValueField(.eventSourceUserData, value: marker)
+        if event.getIntegerValueField(.eventSourceUserData) != marker {
+            guard let rebuilt = rebuilt(event) else {
+                return Log.error("手势翻译：补发的事件带着远控的记号、改不掉，用自己的事件源重建也失败（类型 \(event.type.rawValue)），这一下没补发")
+            }
+            event = rebuilt
+        }
         event.post(tap: .cgSessionEventTap)
+    }
+
+    /// 按原事件的类型、位置重建一个左键事件，事件源是自己的（记号写在源上），只带走连击计数和修饰键。
+    /// 补发的只有左键的按下、拖动、抬起（kind(of:)），右键、滚动是自己新建的，不走这里
+    private static func rebuilt(_ original: CGEvent) -> CGEvent? {
+        guard let source = CGEventSource(stateID: .combinedSessionState) else { return nil }
+        source.userData = marker
+        guard let event = CGEvent(mouseEventSource: source, mouseType: original.type,
+                                  mouseCursorPosition: original.location, mouseButton: .left) else { return nil }
+        event.setIntegerValueField(.mouseEventClickState, value: original.getIntegerValueField(.mouseEventClickState))
+        event.flags = original.flags
+        return event
     }
 
     /// 右键按下、抬起
