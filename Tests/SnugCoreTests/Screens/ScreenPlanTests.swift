@@ -35,6 +35,14 @@ struct ScreenPlanTests {
         #expect(ScreenPlan.wishes(config: c, remote: false, trusted: false, preview: true).isEmpty)
     }
 
+    @Test("常驻（装着只在启动时读一次显示器的远控）：不等远程就建出所有开着的屏，和远程中一样；关着的照样不建，没权限照样一块不要")
+    func resident() {
+        let c = config()
+        let wishes = ScreenPlan.wishes(config: c, remote: false, trusted: true, resident: true)
+        #expect(wishes == ScreenPlan.wishes(config: c, remote: remote, trusted: true))
+        #expect(ScreenPlan.wishes(config: c, remote: false, trusted: false, resident: true).isEmpty)
+    }
+
     @Test("类别 → 行为：手机、平板是触屏，电脑不是；手势总开关不改行为（翻不翻译由界面层按开关定）")
     func behavior() {
         #expect(ScreenPlan.behavior(.phone) == .touchScreen)

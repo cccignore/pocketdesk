@@ -10,7 +10,7 @@ package enum CrossDeskRemote {
     /// 有控制端连着、在抓屏时它持有的电源断言的名字（源码 screen_sharing_power.cpp，防系统和显示器空闲睡眠各一个，同名）
     package static let sharingAssertion = "CrossDesk is sharing the desktop"
 
-    /// 交给核心的身份：界面和注入是同一个程序，按记号认注入的事件
+    /// 交给核心的身份：界面和注入是同一个程序，按记号认注入的事件；它只在启动时读一次显示器（源码 screen_capturer_sck_impl.mm），屏要常驻
     package static let identity = RemoteIdentity(logName: "CrossDesk", displayName: "CrossDesk", bundleIDs: [bundleID],
-                                                injector: InjectedEventSource(marker: injectedMarker))
+                                                injector: InjectedEventSource(marker: injectedMarker), readsDisplaysOnce: true)
 }

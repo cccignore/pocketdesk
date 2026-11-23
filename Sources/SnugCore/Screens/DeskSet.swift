@@ -549,15 +549,22 @@ public final class DeskSet {
     /// 远程在不在进行（会话层的结论）。远程结束后，远程中撤屏留下的永久配置要重写（settleDisplays）
     public func setRemote(_ on: Bool) {
         guard screens.setRemote(on), !on else { return }
-        // 远程结束：设为主屏的那块常驻不撤（ScreenPlan），这次远程的事不带到下一次
-        lane.run { self.endSession() }
+        // 远程结束：常驻的屏不撤（ScreenPlan），这次远程的事不带到下一次
+        lane.run { await self.endSession() }
         settleDisplays()
     }
 
-    /// 远程结束后还留着的屏（常驻的主屏）：屏上的窗口原样留着，下次连上接着用（主人定：设了主屏，
-    /// 屏上的东西就不该变；取消设为主屏、撤这块屏时才放回）。只收掉这次远程的提示
-    private func endSession() {
-        for desk in desks.values { desk.setNotice(nil) }
+    /// 远程结束后还留着的屏：
+    /// - 设为主屏的那块：屏上的窗口原样留着，下次连上接着用（主人定：设了主屏，屏上的东西就不该变；取消设为主屏、撤这块屏时才放回）
+    /// - 别的常驻的屏（远控只在启动时读一次显示器，屏不能撤）：屏留着，窗口放回原处、回到资源库，和撤屏时一样（本机看不见这块屏）
+    /// 都收掉这次远程的提示
+    private func endSession() async {
+        for desk in orderedDesks {
+            desk.setNotice(nil)
+            guard desk.wanted, desk.id != screens.mainScreen, screens.display(desk.id) != nil else { continue }
+            await desk.vacate()
+            Log.info("远程结束，常驻的屏（\(desk.id)）留着，屏上的窗口放回原处")
+        }
         forgetSession()
     }
 

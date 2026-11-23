@@ -733,6 +733,40 @@ struct DeskSetTests {
         #expect(rig.windows.window(xcode.key)?.frame == home)
     }
 
+    @Test("常驻的屏（不是主屏）：远程结束时不撤，屏上的窗口放回原处、账销掉，回到资源库；设为主屏的那块照旧原样留着")
+    func residentScreenPutsBackAtSessionEnd() async throws {
+        let rig = try Rig()
+        let home = CGRect(x: 200, y: 150, width: 900, height: 600)
+        let xcode = WindowInfo(key: WindowKey(pid: 30, id: 50), app: "Xcode", bundleID: "com.apple.dt.Xcode", title: "snug")
+        let notes = WindowInfo(key: WindowKey(pid: 31, id: 51), app: "备忘录", bundleID: "com.apple.Notes", title: "清单")
+        rig.windows.add(xcode.key, frame: home, info: xcode)
+        rig.windows.add(notes.key, frame: home, info: notes)
+        var main = rig.secondWish()
+        main.main = true
+        rig.desk.setRemote(true)
+        rig.set.setWishes([rig.desk.wish, main])
+        await rig.set.idle()
+        rig.set.pull(xcode, on: rig.desk.wish.id)
+        rig.set.pull(notes, on: second)
+        await rig.set.idle()
+        #expect(rig.placed(on: rig.desk.wish.id) == xcode)
+        let onMain = try #require(rig.windows.window(notes.key)?.frame)
+        rig.timeline.advance(10)
+        rig.journal.clear()
+        // 远程结束：先说一块屏都不要，再按「不在远程、常驻」重算（两块都要），再告诉 DeskSet
+        rig.set.setWishes([])
+        rig.set.setWishes([rig.desk.wish, main])
+        rig.desk.setRemote(false)
+        await rig.set.idle()
+        #expect(!rig.journal.all.contains { $0.hasPrefix("retire") })
+        #expect(rig.placed(on: rig.desk.wish.id) == nil)
+        #expect(rig.record(of: rig.desk.wish.id) == nil)
+        #expect(rig.windows.window(xcode.key)?.frame == home)
+        #expect(rig.set.state.desks[rig.desk.wish.id]?.listVisible == true)
+        #expect(rig.placed(on: second) == notes)
+        #expect(rig.windows.window(notes.key)?.frame == onMain)
+    }
+
     @Test("远程中取消主屏、屏留着：系统还原排布时把屏上放着的窗口换去了原主屏（资源库开着，不会自己铺回来）：挪回来，仍算放在屏上")
     func releaseMainReclaimsPlaced() async throws {
         let rig = try Rig()

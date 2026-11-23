@@ -12,12 +12,15 @@ public struct RemoteIdentity: Equatable, Sendable {
     public let bundleIDs: Set<String>
     /// 被远程时注入鼠标事件的进程：手势翻译只接管它发来的
     public let injector: InjectedEventSource
+    /// 只在启动时读一次显示器列表、之后加的屏看不到：装着它时 Snug 的屏常驻（见 ScreenPlan），它要在屏建好之后启动
+    public let readsDisplaysOnce: Bool
 
-    public init(logName: String, displayName: String, bundleIDs: Set<String>, injector: InjectedEventSource) {
+    public init(logName: String, displayName: String, bundleIDs: Set<String>, injector: InjectedEventSource, readsDisplaysOnce: Bool = false) {
         self.logName = logName
         self.displayName = displayName
         self.bundleIDs = bundleIDs
         self.injector = injector
+        self.readsDisplaysOnce = readsDisplaysOnce
     }
 }
 

@@ -36,6 +36,8 @@ final class AppController: Sendable {
     private var lastVerifyAt = Date.distantPast
     /// 手势翻译此刻覆盖哪几块屏：变了才记日志
     private var gestureScreens: Set<ScreenID> = []
+    /// 常驻：装着只在启动时读一次显示器的远控时，开着的屏不等远程（见 ScreenPlan）
+    private var resident = false
     /// 单调时钟的起点：系统改时间不会让「已经过了多久」算错
     private let anchor = (date: Date(), uptime: ProcessInfo.processInfo.systemUptime)
 
@@ -115,6 +117,7 @@ final class AppController: Sendable {
         // 加进 .common：菜单展开、窗口拖动期间也照常走
         RunLoop.main.add(timer, forMode: .common)
         tickTimer = timer
+        refreshResident()
         tick()
         let enabled = store.config.screens.filter(\.enabled).map(\.name)
         Log.info("开始监控（开着的屏：\(enabled.isEmpty ? "没有" : enabled.joined(separator: "、"))，手势\(store.config.gestures ? "已开" : "已关")"
@@ -148,6 +151,7 @@ final class AppController: Sendable {
             desks.checkReturns()
             desks.settleDisplays()
             refreshScreenRecording()
+            refreshResident()
         }
         // 推流只有一路画面（UU 一次只让一台设备控制，V12），在推哪块屏看这次远程的归属方
         state.update(\.streamedDisplay, session.tracked?.observation.streamedDisplay)
@@ -169,10 +173,10 @@ final class AppController: Sendable {
 
     /// 断开后远控不再动指针，而 Snug 的屏要等重连窗口才撤。这十几秒里指针若停在 Snug 的屏上，
     /// 那块屏在本机看不见，就成了「鼠标找不回来」。等待期每拍看一眼：用户一动又可能滑回去；
-    /// 只在断开与重连之间生效，连上马上停（issue #29）。设为主屏的那块除外：它常驻、远程结束也不撤，
-    /// 指针留在上面正是设主屏的本意（重连后接着用），和撤屏时指针落到主屏一致
+    /// 只在断开与重连之间生效，连上马上停（issue #29）。常驻的屏没人远程时一直在、本机同样看不见，一直看着。
+    /// 设为主屏的那块除外：它常驻、远程结束也不撤，指针留在上面正是设主屏的本意（重连后接着用），和撤屏时指针落到主屏一致
     private func keepPointerOffSnugScreens() {
-        guard session.inEpisode, !session.isConnected else { return }
+        guard !session.isConnected, session.inEpisode || resident else { return }
         for (id, desk) in state.desks.desks where id != store.config.mainScreen {
             guard let display = desk.display else { continue }
             Cursor.leave(display)
@@ -188,7 +192,21 @@ final class AppController: Sendable {
 
     /// 按此刻的配置和会话算出要哪些屏，交给 DeskSet（结论没变就什么都不做）
     func applyPlan() {
-        desks.setWishes(ScreenPlan.wishes(config: store.config, remote: session.inEpisode, trusted: state.accessibilityTrusted, preview: preview))
+        desks.setWishes(ScreenPlan.wishes(config: store.config, remote: session.inEpisode, trusted: state.accessibilityTrusted,
+                                          preview: preview, resident: resident))
+    }
+
+    /// 装着只在启动时读一次显示器的远控就常驻。装上、卸掉随时会变，和核对窗口同一拍重看
+    private func refreshResident() {
+        let needing = remotes.map(\.identity).filter { identity in
+            identity.readsDisplaysOnce && identity.bundleIDs.contains { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil }
+        }
+        guard needing.isEmpty == resident else { return }
+        resident = !needing.isEmpty
+        let names = needing.map(\.displayName).joined(separator: "、")
+        Log.info(resident ? "装着 \(names)（只在启动时读一次显示器）：开着的屏常驻，不等远程；它要在屏建好之后启动才看得到"
+                          : "没有只在启动时读一次显示器的远控了：屏改回远程时才建")
+        applyPlan()
     }
 
     /// 权限是用户在系统设置里给的，随时会变：刚给上时把上次没放回去的窗口放回去
