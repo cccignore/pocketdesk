@@ -18,7 +18,7 @@ public enum ScreenPlan {
         let shown = config.screens.filter(\.enabled).prefix(ScreenConfig.limit)
         return shown.filter { remote || preview || resident || $0.id == config.mainScreen }.map { screen in
             ScreenWish(id: screen.id, spec: spec(of: screen), fit: fit(of: screen), behavior: behavior(screen.device.kind),
-                       main: config.mainScreen == screen.id)
+                       main: config.mainScreen == screen.id, resident: resident)
         }
     }
 

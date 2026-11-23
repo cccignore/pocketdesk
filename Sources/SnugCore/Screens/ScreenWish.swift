@@ -60,12 +60,15 @@ public struct ScreenWish: Equatable, Sendable {
     public var behavior: ScreenBehavior
     /// 建好后设为主屏、撤之前设回原来的主屏（最多一块，见 docs/how-it-works.md「设为主屏」）
     public var main: Bool
+    /// 常驻（装着只在启动时读一次显示器的远控，见 ScreenPlan）：远程结束时屏不撤，屏上的窗口放回原处（设为主屏的那块除外）
+    public var resident: Bool
 
-    public init(id: ScreenID, spec: ScreenSpec, fit: ScreenFit, behavior: ScreenBehavior, main: Bool = false) {
+    public init(id: ScreenID, spec: ScreenSpec, fit: ScreenFit, behavior: ScreenBehavior, main: Bool = false, resident: Bool = false) {
         self.id = id
         self.spec = spec
         self.fit = fit
         self.behavior = behavior
         self.main = main
+        self.resident = resident
     }
 }

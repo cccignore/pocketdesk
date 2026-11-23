@@ -39,7 +39,12 @@ struct ScreenPlanTests {
     func resident() {
         let c = config()
         let wishes = ScreenPlan.wishes(config: c, remote: false, trusted: true, resident: true)
-        #expect(wishes == ScreenPlan.wishes(config: c, remote: remote, trusted: true))
+        #expect(wishes.map(\.id) == ScreenPlan.wishes(config: c, remote: remote, trusted: true).map(\.id))
+        #expect(wishes.allSatisfy { $0.resident })
+        // 常驻的远程中照样标着（远程结束时要按它放回窗口）；不常驻的、预览模式都不标
+        #expect(ScreenPlan.wishes(config: c, remote: remote, trusted: true, resident: true).allSatisfy { $0.resident })
+        #expect(!ScreenPlan.wishes(config: c, remote: remote, trusted: true).contains { $0.resident })
+        #expect(!ScreenPlan.wishes(config: c, remote: false, trusted: true, preview: true).contains { $0.resident })
         #expect(ScreenPlan.wishes(config: c, remote: false, trusted: false, resident: true).isEmpty)
     }
 
