@@ -74,8 +74,8 @@ private final class TapSession: @unchecked Sendable {
     private var tap: CFMachPort?
     private var pipeline: TouchPipeline
     private var heldPress: CGEvent?
-    /// 下一次补发的点按按单击算（TouchCommand.resetClickCount），补完抬起就清掉
-    private var resetClickCount = false
+    /// 补发时的连击计数：吞掉过一下点按时，这一串连击都减掉它（ClickChain）
+    private var clicks = ClickChain()
     private var coastTimer: CFRunLoopTimer?
     /// 不发抬起的远控那一笔到点收尾（TouchPipeline.deadline）
     private var expireTimer: CFRunLoopTimer?
@@ -167,9 +167,9 @@ private final class TapSession: @unchecked Sendable {
     private func perform(_ command: TouchCommand, current: CGEvent?, region: TouchRegion?) {
         switch command {
         case .resetClickCount:
-            resetClickCount = true
+            if let current { clicks.skip(before: current.getIntegerValueField(.mouseEventClickState)) }
         case .replayPress:
-            if resetClickCount { heldPress?.setIntegerValueField(.mouseEventClickState, value: 1) }
+            if let heldPress { Self.recount(heldPress, &clicks) }
             TouchEvents.post(heldPress)
             heldPress = nil
         case .replayCurrent:
@@ -179,10 +179,7 @@ private final class TapSession: @unchecked Sendable {
                 return
             }
             let replay = current.copy()
-            if resetClickCount {
-                replay?.setIntegerValueField(.mouseEventClickState, value: 1)
-                resetClickCount = false
-            }
+            if let replay { Self.recount(replay, &clicks) }
             TouchEvents.post(replay)
         case .rightClick(let point):
             TouchEvents.rightClick(at: point).forEach(TouchEvents.post)
@@ -198,6 +195,13 @@ private final class TapSession: @unchecked Sendable {
                 perform(.replayCurrent, current: current, region: region)
             }
         }
+    }
+
+    /// 按这一串连击改补发事件的连击计数；没变就不碰这个字段
+    private static func recount(_ event: CGEvent, _ clicks: inout ClickChain) {
+        let raw = event.getIntegerValueField(.mouseEventClickState)
+        let count = clicks.count(raw)
+        if count != raw { event.setIntegerValueField(.mouseEventClickState, value: count) }
     }
 
     /// 窗口服务器里此刻在屏上的窗口，从前到后
