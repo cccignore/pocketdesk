@@ -17,4 +17,11 @@ public struct ClickChain: Equatable, Sendable {
         guard skipped > 0 else { return raw }
         return max(1, raw - skipped)
     }
+
+    /// 原样放行的左键事件（按住选择时的拖动、抬起，Snug 屏外的点击）：按下、抬起照常数，远控从 1 数起时这一串结束；
+    /// 拖动只在连击里（计数大于 1）才改，计数 0、1 的拖动没有信息（有的远控在拖动上不写），不碰这一串
+    public mutating func passing(_ raw: Int64, dragging: Bool) -> Int64 {
+        if dragging, raw <= 1 { return raw }
+        return count(raw)
+    }
 }

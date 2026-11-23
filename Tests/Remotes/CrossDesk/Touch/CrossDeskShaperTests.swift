@@ -252,6 +252,40 @@ struct CrossDeskShaperTests {
         #expect(scrolled >= 189)
     }
 
+    @Test("端到端：开头第一步很小、或者停了一下再甩，接着一下跳得远（丢了几下）：仍是同一笔")
+    func smallOrPausedStartStaysInStroke() {
+        func run(_ moves: [(Double, Double)]) -> (began: Int, scrolled: Double) {
+            var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])
+            var began = 0, scrolled = 0.0
+            func take(_ step: TouchStep) {
+                for case .scroll(let s) in commands(step) {
+                    if s.phase == .began { began += 1 }
+                    scrolled += s.deltaY
+                }
+            }
+            for (y, t) in moves { take(pipeline.handle(event(.move, 100, y, t), from: 0, regions: [phone])) }
+            if let deadline = pipeline.deadline { take(pipeline.expire(now: deadline, regions: [phone])) }
+            return (began, scrolled)
+        }
+        let small = run([(300, 0), (310, 0.016), (460, 0.064), (510, 0.08), (560, 0.096)])
+        #expect(small.began == 1)
+        #expect(small.scrolled >= 250)
+        let paused = run([(300, 0), (320, 0.016), (320, 0.032), (440, 0.048), (560, 0.064), (680, 0.08)])
+        #expect(paused.began == 1)
+    }
+
+    @Test("端到端：卡住超过收尾时间，前一甩只剩一下尾巴，和后一甩的开头挤在一起到：不从尾巴跳到后一甩")
+    func stragglerThenBunchedHead() {
+        var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])
+        var deltas: [Double] = []
+        func take(_ step: TouchStep) { deltas += commands(step).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } } }
+        for i in 0...2 { take(pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.016 * Double(i)), from: 0, regions: [phone])) }
+        take(pipeline.expire(now: try! #require(pipeline.deadline), regions: [phone]))
+        take(pipeline.handle(event(.move, 100, 390, 0.3), from: 0, regions: [phone]))
+        for i in 0...2 { take(pipeline.handle(event(.move, 100, 90 + 30 * Double(i), 0.3005 + 0.0005 * Double(i)), from: 0, regions: [phone])) }
+        #expect(deltas.allSatisfy { abs($0) <= 31 })
+    }
+
     @Test("端到端：快甩（60Hz，每下隔 110 点）照样滚动并带惯性")
     func fastFlickScrolls() {
         var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])

@@ -217,17 +217,28 @@ public final class Desk {
         placement?.settled = nil
     }
 
-    /// 能不能让出键盘：手机竖屏、远控声明了键盘多高、屏上放着窗口
-    var offersKeyboardRoom: Bool { behavior.touch && screenFit.keyboardKeep != nil && placement != nil }
+    /// 能不能让出键盘：手机竖屏、远控声明了键盘多高、屏上放着窗口、露着的是窗口（键盘键排在队里时回了资源库，轮到时不让）
+    var offersKeyboardRoom: Bool { behavior.touch && screenFit.keyboardKeep != nil && placement != nil && !state.listVisible }
 
     /// 让出键盘、铺回整屏（小横条上的键盘键）。窗口按新的区域重新铺：App 自己重排，输入框落在键盘上方。
     /// 窗口的最小高度放不下时照常换宽一档（fill），铺回整屏时换回让位前那一档
     func setKeyboardRoom(_ on: Bool) async {
-        guard on != state.keyboardRoom, !on || offersKeyboardRoom, var p = placement else { return }
+        guard on != state.keyboardRoom, !on || offersKeyboardRoom, let before = placement else { return }
+        var p = before
         state.keyboardRoom = on
         if on { p.widthBeforeKeyboard = p.width } else { p.leaveKeyboardRoom() }
         Log.info("\(p.window.label) \(on ? "让出键盘的位置，只铺到键盘上方" : "铺回整屏")")
-        await fill(&p)
+        let filled = await fill(&p) != nil
+        if on, !state.keyboardRoom {
+            // 铺到一半回了资源库（回资源库不排队）：照它的意思不让了，换回让位前那一档、忘掉铺完的样子，露出来时按整屏重铺
+            p.leaveKeyboardRoom()
+            p.settled = nil
+        } else if !filled {
+            // 窗口挪不动（App 卡住）：键盘键退回原来的状态，和窗口对得上；换档由下一次核对按原来那一档补
+            Log.warn("\(p.window.label) \(on ? "让出键盘" : "铺回整屏")没铺成（窗口读不到或挪不动），键盘键退回原来的状态")
+            state.keyboardRoom = !on
+            return
+        }
         placement = p
     }
 
@@ -664,7 +675,7 @@ public final class Desk {
         }
         if !state.listVisible, await !windows.isShown(p.window.key) {
             Log.info("屏上的 \(p.window.label) 不在屏上了（最小化、隐藏或关成了隐藏），回到 App 资源库")
-            state.listVisible = true
+            showListNow()
             await matchWidth()
         }
     }

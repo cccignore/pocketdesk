@@ -130,6 +130,91 @@ struct DeskTests {
         #expect(rig.windows.window(ghostty.key)?.frame == FakeDisplays.area(width: fit.baseWidth, fit: fit))
     }
 
+    @Test("让位换档还没完时点小横条回资源库：退出让位，返回窗口时按整屏、原来那一档铺；再开关一次也回到原来那一档")
+    func showListWhileRaising() async throws {
+        let rig = try Rig()
+        var fit = ScreenFit.standard
+        fit.keyboardKeep = 0.6
+        rig.desk.setFit(fit)
+        rig.windows.setMinSize(ghostty.key, height: 700)
+        await rig.ready()
+        await rig.pull(ghostty)
+        let display = try #require(rig.desk.state.display)
+        // 让位第一次挪窗口的那一刻回资源库（回资源库不排队，和让位抢着改状态）
+        let fired = Locked(false)
+        rig.windows.onMove { _ in
+            guard !fired.withLock({ let was = $0; $0 = true; return was }) else { return }
+            DispatchQueue.main.sync { MainActor.assumeIsolated { rig.desk.showList() } }
+        }
+        rig.desk.toggleKeyboardRoom()
+        await rig.desk.idle()
+        rig.windows.onMove { _ in }
+        #expect(!rig.desk.state.keyboardRoom)
+        rig.desk.returnToPlaced()
+        await rig.desk.idle()
+        #expect(rig.displays.widths[display] == fit.baseWidth)
+        #expect(rig.windows.window(ghostty.key)?.frame == FakeDisplays.area(width: fit.baseWidth, fit: fit))
+        rig.desk.toggleKeyboardRoom()
+        await rig.desk.idle()
+        rig.desk.toggleKeyboardRoom()
+        await rig.desk.idle()
+        #expect(rig.displays.widths[display] == fit.baseWidth)
+    }
+
+    @Test("键盘键排在队里还没轮到时回了资源库：轮到时不再让位")
+    func toggleQueuedThenShowList() async throws {
+        let rig = try Rig()
+        var fit = ScreenFit.standard
+        fit.keyboardKeep = 0.6
+        rig.desk.setFit(fit)
+        await rig.ready()
+        await rig.pull(ghostty)
+        rig.desk.toggleKeyboardRoom()
+        rig.desk.showList()
+        await rig.desk.idle()
+        #expect(rig.desk.state.listVisible)
+        #expect(!rig.desk.state.keyboardRoom)
+    }
+
+    @Test("让着键盘时窗口被最小化（定期核对露出资源库）：不再让着键盘")
+    func verifyListLeavesKeyboardRoom() async throws {
+        let rig = try Rig()
+        var fit = ScreenFit.standard
+        fit.keyboardKeep = 0.6
+        rig.desk.setFit(fit)
+        await rig.ready()
+        await rig.pull(ghostty)
+        rig.desk.toggleKeyboardRoom()
+        await rig.desk.idle()
+        #expect(rig.desk.state.keyboardRoom)
+        await rig.windows.setMinimized(ghostty.key, true)
+        rig.desk.verifyPlacement()
+        await rig.desk.idle()
+        #expect(rig.desk.state.listVisible)
+        #expect(!rig.desk.state.keyboardRoom)
+    }
+
+    @Test("让位时挪不动窗口（App 卡住）：键盘键退回原来的状态，窗口照旧")
+    func keyboardRoomFillFails() async throws {
+        let rig = try Rig()
+        var fit = ScreenFit.standard
+        fit.keyboardKeep = 0.6
+        rig.desk.setFit(fit)
+        await rig.ready()
+        await rig.pull(ghostty)
+        let before = rig.windows.window(ghostty.key)?.frame
+        rig.windows.blockMoves()
+        rig.desk.toggleKeyboardRoom()
+        await rig.desk.idle()
+        #expect(!rig.desk.state.keyboardRoom)
+        #expect(rig.windows.window(ghostty.key)?.frame == before)
+        // 恢复后照常能让位
+        rig.windows.blockMoves(false)
+        rig.desk.toggleKeyboardRoom()
+        await rig.desk.idle()
+        #expect(rig.desk.state.keyboardRoom)
+    }
+
     @Test("让着键盘时换了比例（换了一家没声明键盘的远控）：不再让着键盘，按新比例铺满整屏")
     func keyboardRoomThenReshape() async throws {
         let rig = try Rig()

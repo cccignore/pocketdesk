@@ -148,9 +148,13 @@ private final class TapSession: @unchecked Sendable {
         let pointer = PointerEvent(kind, at: event.location, time: ProcessInfo.processInfo.systemUptime)
         let step = pipeline.handle(pointer, from: source, regions: regions.withLock { $0 })
         apply(step, current: event)
-        // 放行的左键事件（按住选择时的拖动、抬起）也按这一串连击改计数，和补发的按下对得上。
-        // 只改连击里的（计数大于 1）：这时只读不记，远控在拖动上不写计数（0）也不会把这一串提前清掉
-        if step.passOriginal, kind != .move, event.getIntegerValueField(.mouseEventClickState) > 1 { Self.recount(event, &clicks) }
+        // 放行的左键事件（按住选择时的拖动、抬起，Snug 屏外的点击）也按这一串连击数（ClickChain.passing）：
+        // 和补发的按下对得上，远控从 1 数起时这一串结束
+        if step.passOriginal, kind != .move {
+            let raw = event.getIntegerValueField(.mouseEventClickState)
+            let count = clicks.passing(raw, dragging: kind == .leftDrag)
+            if count != raw { event.setIntegerValueField(.mouseEventClickState, value: count) }
+        }
         return step.passOriginal ? pass : nil
     }
 
