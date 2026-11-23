@@ -140,6 +140,22 @@ struct CrossDeskShaperScenarioTests {
         }
     }
 
+    @Test("远的一步之后紧接着就掉头：那一步是两次落指之间的空当，不当滚动交出去（卡住后放出、快甩后顺势往前落指再往回甩、快甩最后一下单独卡住）")
+    func reversalAfterFarStep() {
+        // 卡了 0.6 秒，前一甩只剩一下尾巴；后一甩每隔 6 毫秒放出一下
+        let stalled = run(flickDown + [.move(705, 0.683), .move(300, 0.689), .move(380, 0.695), .move(460, 0.701), .move(540, 0.707), .expire])
+        #expect(stalled.maxStep <= 81)
+        // 快甩完手指顺势往前落，马上往回甩
+        let landing = run([.move(250, 0), .move(265.9, 0.017), .move(303.5, 0.033), .move(362.9, 0.05), .move(442.3, 0.067), .move(525.7, 0.083),
+                           .move(609, 0.1), .move(809, 0.18), .move(793.1, 0.197), .move(755.5, 0.213), .move(696.1, 0.23),
+                           .move(616.7, 0.247), .move(533.3, 0.263), .move(450, 0.28), .expire])
+        #expect(landing.maxStep <= 84)
+        // 快甩的最后一下单独卡在后面（离终点超过 100 点），之后的一甩往回走
+        let lastStuck = run([.move(150, 0), .move(171, 0.017), .move(222, 0.033), .move(305, 0.05), .move(416, 0.067), .move(532.6, 0.083), .expire,
+                             .move(426.9, 0.435), .move(880, 0.441), .move(800, 0.447), .move(720, 0.453), .move(640, 0.459), .expire])
+        #expect(lastStuck.maxStep <= 117)
+    }
+
     @Test("惯性中网络卡住：前一甩的一下尾巴之后紧接着在前方点一下，仍只是停住惯性，不点到内容")
     func tapAfterStragglerDuringCoast() {
         let coast = moves(from: 300, step: 30, n: 5, at: 0, dt: 0.016) + [.expire]

@@ -21,7 +21,7 @@ package enum CrossDeskCheckRun {
             version: CrossDeskApp.installedVersion(), running: !pids.isEmpty,
             signals: CrossDeskSignals(running: !pids.isEmpty, sharing: sharing),
             logReadable: lines != nil, enumerated: CrossDeskLogRecord.lastEnumeration(records),
-            onlineSnugDisplays: Set((Screens.online() ?? []).filter { CGDisplayVendorNumber($0) == ScreenSpec.vendorID }),
+            onlineSnugDisplays: Set((Screens.standalone() ?? []).filter { CGDisplayVendorNumber($0) == ScreenSpec.vendorID }),
             onlineDisplays: Screens.standalone() ?? [],
             sessionsInLog: records.filter { $0.date >= since && $0.event == .captureStarted }.count,
             detectionsInSnugLog: snug.detections.count)

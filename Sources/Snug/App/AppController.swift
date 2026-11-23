@@ -250,7 +250,8 @@ final class AppController: Sendable {
         let stale = remotes.map(\.identity).filter { identity in
             guard identity.readsDisplaysOnce, let since else { return false }
             if let registered = readings.first(where: { $0.remote == identity })?.observation.registeredDisplays, let all {
-                return RegisteredDisplays.misses(registered, snug: online, online: all)
+                // 只看能单独显示的：镜像组里的从属屏远控本来就切不过去，重启它也没用
+                return RegisteredDisplays.misses(registered, snug: online.intersection(all), online: all)
             }
             let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
             return apps.contains { ($0.launchDate ?? .distantFuture) < since }
