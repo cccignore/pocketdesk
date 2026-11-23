@@ -31,11 +31,13 @@ package enum CrossDeskApp {
         return Bundle(url: url)?.infoDictionary?["CFBundleShortVersionString"] as? String ?? "版本未知"
     }
 
-    /// 它自己的日志，滚动过的旧日志在前（spdlog 滚动：crossdesk.1.log 比 crossdesk.log 旧）；一份都读不到为 nil
+    /// 它自己的日志，滚动过的旧日志在前（spdlog 滚动，留 3 份：crossdesk.3.log 最旧，源码 log/rd_log.cpp）；一份都读不到为 nil。
+    /// 启动时读到的显示器可能已经滚进旧日志，所以都读
     package static func logLines() -> [String]? {
         let current = CrossDeskLogRecord.path
-        let rotated = current.deletingLastPathComponent().appendingPathComponent("crossdesk.1.log")
-        let texts = [rotated, current].compactMap { try? String(contentsOf: $0, encoding: .utf8) }
+        let folder = current.deletingLastPathComponent()
+        let rotated = (1...3).reversed().map { folder.appendingPathComponent("crossdesk.\($0).log") }
+        let texts = (rotated + [current]).compactMap { try? String(contentsOf: $0, encoding: .utf8) }
         guard !texts.isEmpty else { return nil }
         return texts.flatMap { $0.split(separator: "\n").map(String.init) }
     }

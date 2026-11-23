@@ -38,9 +38,11 @@ final class AppController: Sendable {
     private var gestureScreens: Set<ScreenID> = []
     /// 常驻：装着只在启动时读一次显示器的远控时，开着的屏不等远程（见 ScreenPlan）
     private var resident = false
-    /// Snug 的屏上一拍在线的编号，和最近一次有新的屏上线的时刻：只在启动时读一次显示器的远控比它早启动就看不到
-    private var snugDisplays: Set<DisplayID> = []
-    private var snugDisplaysSince: Date?
+    /// 装着的远控（日志名）：手势只接管这几家
+    private var installedRemotes: [String]?
+    /// Snug 的屏每个编号头一回在线的时刻：只在启动时读一次显示器的远控比它早启动就看不到这块屏。
+    /// 同一个编号掉线一拍再回来不算新的（远控按编号认屏，回来的它还认得）
+    private var snugDisplaysFirstSeen: [DisplayID: Date] = [:]
     /// 单调时钟的起点：系统改时间不会让「已经过了多久」算错
     private let anchor = (date: Date(), uptime: ProcessInfo.processInfo.systemUptime)
 
@@ -54,7 +56,7 @@ final class AppController: Sendable {
         desks = DeskSet(displays: VirtualDisplayService(helper: helper), windows: windows, apps: apps,
                         arrangement: DisplayArrangementService(), paths: paths, defaultZoom: store.config.zoomSteps)
         catalog = AppCatalog(apps: apps, windows: windows, excluding: Set(remotes.flatMap(\.identity.bundleIDs)))
-        touch = TouchTap(sources: remotes.map { type(of: $0).touchSource })
+        touch = TouchTap(sources: Self.installed(remotes).map { type(of: $0).touchSource })
         state.config = store.config
         state.previewing = preview
         state.devices = devices
@@ -120,7 +122,7 @@ final class AppController: Sendable {
         // 加进 .common：菜单展开、窗口拖动期间也照常走
         RunLoop.main.add(timer, forMode: .common)
         tickTimer = timer
-        refreshResident()
+        refreshInstalled()
         tick()
         let enabled = store.config.screens.filter(\.enabled).map(\.name)
         Log.info("开始监控（开着的屏：\(enabled.isEmpty ? "没有" : enabled.joined(separator: "、"))，手势\(store.config.gestures ? "已开" : "已关")"
@@ -155,7 +157,7 @@ final class AppController: Sendable {
             desks.checkReturns()
             desks.settleDisplays()
             refreshScreenRecording()
-            refreshResident()
+            refreshInstalled()
         }
         // 推流只有一路画面（UU 一次只让一台设备控制，V12），在推哪块屏看这次远程的归属方
         state.update(\.streamedDisplay, session.tracked?.observation.streamedDisplay)
@@ -201,13 +203,14 @@ final class AppController: Sendable {
     }
 
     /// 只在启动时读一次显示器的远控，启动得比 Snug 此刻在线的屏晚才看得到它们。开机时两个都自动打开，谁先谁后说不准：
-    /// 每拍看一眼，有新的屏上线就记下时刻，远控的进程比它早启动就列进 staleRemotes，菜单栏给「重启」
+    /// 每拍看一眼，远控的进程比此刻在线的哪块屏头一回上线早，就列进 staleRemotes，菜单栏给「重启」。
+    /// 屏上线和下一拍之间（最多 0.5 秒）启动的会误报一次，重启无害
     private func refreshStaleRemotes(at now: Date) {
         let online = Set(state.desks.desks.values.compactMap(\.display))
-        if !online.subtracting(snugDisplays).isEmpty { snugDisplaysSince = now }
-        snugDisplays = online
+        for display in online where snugDisplaysFirstSeen[display] == nil { snugDisplaysFirstSeen[display] = now }
+        let since = online.compactMap { snugDisplaysFirstSeen[$0] }.max()
         let stale = remotes.map(\.identity).filter { identity in
-            guard identity.readsDisplaysOnce, let since = snugDisplaysSince, !online.isEmpty else { return false }
+            guard identity.readsDisplaysOnce, let since else { return false }
             let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
             return apps.contains { ($0.launchDate ?? .distantFuture) < since }
         }.map(\.displayName)
@@ -217,17 +220,28 @@ final class AppController: Sendable {
         state.staleRemotes = stale
     }
 
-    /// 装着只在启动时读一次显示器的远控就常驻。装上、卸掉随时会变，和核对窗口同一拍重看
-    private func refreshResident() {
-        let needing = remotes.map(\.identity).filter { identity in
-            identity.readsDisplaysOnce && identity.bundleIDs.contains { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil }
+    /// 装着哪几家远控：手势只接管装着的（没装的远控要的事件不收，比如 CrossDesk 的不按键的移动，只装 UU 时监听和以前一样）；
+    /// 装着只在启动时读一次显示器的就常驻。装上、卸掉随时会变，和核对窗口同一拍重看（查一次约 0.05 毫秒）
+    private func refreshInstalled() {
+        let installed = Self.installed(remotes)
+        let names = installed.map(\.identity.logName)
+        if names != installedRemotes {
+            if installedRemotes != nil { touch.setSources(installed.map { type(of: $0).touchSource }) }
+            installedRemotes = names
+            Log.info("装着的远控：\(names.isEmpty ? "没有" : names.joined(separator: "、"))（手势只接管这几家）")
         }
+        let needing = installed.map(\.identity).filter(\.readsDisplaysOnce)
         guard needing.isEmpty == resident else { return }
         resident = !needing.isEmpty
-        let names = needing.map(\.displayName).joined(separator: "、")
-        Log.info(resident ? "装着 \(names)（只在启动时读一次显示器）：开着的屏常驻，不等远程；它要在屏建好之后启动才看得到"
+        let shown = needing.map(\.displayName).joined(separator: "、")
+        Log.info(resident ? "装着 \(shown)（只在启动时读一次显示器）：开着的屏常驻，不等远程；它要在屏建好之后启动才看得到"
                           : "没有只在启动时读一次显示器的远控了：屏改回远程时才建")
         applyPlan()
+    }
+
+    /// 自家 App 装在本机的远控
+    private static func installed(_ remotes: [any RemoteAdapter]) -> [any RemoteAdapter] {
+        remotes.filter { $0.identity.bundleIDs.contains { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil } }
     }
 
     /// 权限是用户在系统设置里给的，随时会变：刚给上时把上次没放回去的窗口放回去

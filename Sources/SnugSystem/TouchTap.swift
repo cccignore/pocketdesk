@@ -13,8 +13,8 @@ public final class TouchTap {
     /// 手势翻译管的范围（CGEvent 坐标），每块要翻译手势的屏一块。主线程写，监听线程读
     private let regions = OSAllocatedUnfairLock<[TouchRegion]>(initialState: [])
     private var session: TapSession?
-    /// 接管哪些远控注入的事件、各自怎么整理：各家已登记的远控
-    private let sources: [TouchSource]
+    /// 接管哪些远控注入的事件、各自怎么整理：装着的那几家（没装的不收它要的事件，比如不按键的移动）
+    private var sources: [TouchSource]
     /// 手机上点了屏上那个窗口的关闭按钮（核对过、点击已经吞掉了），交回窗口编号：在主线程上调
     public var onCloseWindow: ((UInt32) -> Void)?
 
@@ -33,9 +33,17 @@ public final class TouchTap {
         return start()
     }
 
-    /// 起监听线程，等它报告监听建没建成
+    /// 换接管的远控（装上、卸掉了一家）：开着的监听按新的事件种类、新的整理器重开
+    public func setSources(_ sources: [TouchSource]) {
+        self.sources = sources
+        guard session != nil else { return }
+        stop()
+        _ = start()
+    }
+
+    /// 起监听线程，等它报告监听建没建成。一家都不接管时不开（没有要收的事件）
     private func start() -> Bool {
-        guard session == nil else { return true }
+        guard session == nil, !sources.isEmpty else { return true }
         let next = TapSession(regions: regions, sources: sources) { [weak self] window in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.onCloseWindow?(window) } }
         }
