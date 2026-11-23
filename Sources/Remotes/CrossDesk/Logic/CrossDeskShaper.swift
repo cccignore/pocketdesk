@@ -3,8 +3,12 @@
 //   点一下      → 移动、左键按下、左键抬起，几乎同时到（手指抬起时才发）
 //   单指滑动    → 只有不按键的移动，没有按下、抬起（它的滑动只是挪指针）
 //   按住 0.35 秒 → 这时才发移动、左键按下；之后手指的移动是拖动，松手发抬起
-// 整理成翻译器认的形态：不按键的移动拼成一笔（只能是滚动），停手 strokeTimeout 没有新的移动就当松手；
-// 按下的时刻往前推 holdDelay，还原手指真正落下的时刻，翻译器按 iPhone 的习惯判点击、长按右键、长按选择照旧成立。
+// 整理成翻译器认的形态：
+// - 不按键的移动拼成一笔（只能是滚动），停手 strokeTimeout 没有新的移动就当松手。每一下都先压着，等下一个事件来了再交：
+//   紧跟着按下的那一下是点按、长按的前导（在点的地方），不是滑动。不压的话它会停掉惯性、让后面的按下补发点击，
+//   滑完马上点时还会让滚动一下跳到点的地方
+// - 按下的时刻往前推 holdDelay，还原手指真正落下的时刻：翻译器按 iPhone 的习惯判点击、长按右键、长按选择照旧成立
+// 不按键的移动都原样放行（指针跟着手指走，和 CrossDesk 本来一样），整理出的输入都不代表它。
 // 两个时长取自源码、没有真机标定：真机上判错了先看这里
 import Foundation
 import SnugCore
@@ -17,25 +21,29 @@ package struct CrossDeskShaper: TouchShaper {
     package static let strokeTimeout: TimeInterval = 0.12
 
     package let kinds: Set<PointerEvent.Kind> = [.leftDown, .leftDrag, .leftUp, .move]
-    /// 正在拼的那一笔最后一下在哪、什么时候
+    /// 压着还没交的那一下不按键的移动
+    private var held: (point: CGPoint, time: TimeInterval)?
+    /// 这一笔已经交出去的最后一下；nil = 还没开始（只压着一下）
     private var stroke: (point: CGPoint, time: TimeInterval)?
     /// 左键按着（按下之后、抬起之前）：这时的移动是拖动
     private var leftHeld = false
 
     package init() {}
 
-    package var deadline: TimeInterval? { stroke.map { $0.time + Self.strokeTimeout } }
+    package var deadline: TimeInterval? { held.map { $0.time + Self.strokeTimeout } }
 
     package mutating func shape(_ event: PointerEvent) -> [ShapedInput] {
         switch event.kind {
         case .move where leftHeld, .leftDrag:
             return [current(.drag, event)]
         case .move:
-            let kind: TouchInput.Kind = stroke == nil ? .press : .drag
-            stroke = (event.location, event.time)
-            return [ShapedInput(TouchInput(kind, at: event.location, time: event.time, synthetic: true), fromCurrent: true)]
+            let flushed = flushHeld()
+            held = (event.location, event.time)
+            return flushed
         case .leftDown:
             leftHeld = true
+            // 压着的那一下是这次按下的前导，扔掉
+            held = nil
             var press = current(.press, event)
             press.input.time -= Self.holdDelay
             return finishStroke() + [press]
@@ -47,10 +55,21 @@ package struct CrossDeskShaper: TouchShaper {
 
     package mutating func expire(now: TimeInterval) -> [ShapedInput] {
         guard let deadline, now >= deadline else { return [] }
-        return finishStroke()
+        let flushed = stroke == nil ? [] : flushHeld()
+        held = nil
+        return flushed + finishStroke()
     }
 
-    /// 给没收尾的那一笔补一个抬起，记在最后一下的时刻：翻译器按松手前的速度算惯性
+    /// 交出压着的那一下：一笔的第一下当按下，之后当拖动
+    private mutating func flushHeld() -> [ShapedInput] {
+        guard let move = held else { return [] }
+        held = nil
+        let kind: TouchInput.Kind = stroke == nil ? .press : .drag
+        stroke = move
+        return [ShapedInput(TouchInput(kind, at: move.point, time: move.time, synthetic: true), fromCurrent: false)]
+    }
+
+    /// 给已经开始的那一笔补一个抬起，记在交出去的最后一下的时刻：翻译器按松手前的速度算惯性
     private mutating func finishStroke() -> [ShapedInput] {
         guard let last = stroke else { return [] }
         stroke = nil
