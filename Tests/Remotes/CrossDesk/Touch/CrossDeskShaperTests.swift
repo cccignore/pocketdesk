@@ -169,11 +169,11 @@ struct CrossDeskShaperTests {
         }
         let lead = pipeline.handle(event(.move, 400, 900, 0.16), from: 0, regions: [phone])
         deltas += commands(lead).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } }
-        let down = pipeline.handle(event(.leftDown, 400, 900, 0.151), from: 0, regions: [phone])
+        let down = pipeline.handle(event(.leftDown, 400, 900, 0.161), from: 0, regions: [phone])
         deltas += commands(down).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } }
         // 滑的每一步最多 30 点：跳到点的地方会是几百点的一步
         #expect(deltas.allSatisfy { abs($0) <= 31 })
-        #expect(commands(pipeline.handle(event(.leftUp, 400, 900, 0.152), from: 0, regions: [phone])).isEmpty)
+        #expect(commands(pipeline.handle(event(.leftUp, 400, 900, 0.162), from: 0, regions: [phone])).isEmpty)
     }
 
     @Test("端到端：点按的按下晚到（前导之后超过收尾时间才来）：滚动也不跳到点的地方")
@@ -208,6 +208,48 @@ struct CrossDeskShaperTests {
         for i in 0...4 { take(pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.02 * Double(i)), from: 0, regions: [phone])) }
         for i in 0...4 { take(pipeline.handle(event(.move, 100, 200 + 30 * Double(i), 0.16 + 0.02 * Double(i)), from: 0, regions: [phone])) }
         #expect(deltas.allSatisfy { abs($0) <= 31 })
+    }
+
+    @Test("端到端：网络卡了一下，前一甩的尾巴和后一甩的开头挤在一起到：照样分成两笔，不从前一甩的终点跳过去")
+    func bunchedFlicksStaySeparate() {
+        var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])
+        var deltas: [Double] = []
+        func take(_ step: TouchStep) { deltas += commands(step).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } } }
+        for i in 0...2 { take(pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.02 * Double(i)), from: 0, regions: [phone])) }
+        // 卡住之后一起到：前一甩剩下的两下，紧接着后一甩（手指回到下面重新往下甩）
+        take(pipeline.handle(event(.move, 100, 390, 0.1), from: 0, regions: [phone]))
+        take(pipeline.handle(event(.move, 100, 420, 0.1005), from: 0, regions: [phone]))
+        for i in 0...2 { take(pipeline.handle(event(.move, 100, 90 + 30 * Double(i), 0.101 + 0.0005 * Double(i)), from: 0, regions: [phone])) }
+        #expect(deltas.allSatisfy { abs($0) <= 31 })
+    }
+
+    @Test("端到端：滑完紧挨着到一下远处的点按前导，按下又晚到：滚动不跳到点的地方")
+    func bunchedLeadInWithLateDown() {
+        var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])
+        var deltas: [Double] = []
+        func take(_ step: TouchStep) { deltas += commands(step).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } } }
+        for i in 0...5 { take(pipeline.handle(event(.move, 100, 300 + 30 * Double(i), 0.02 * Double(i)), from: 0, regions: [phone])) }
+        take(pipeline.handle(event(.move, 400, 900, 0.101), from: 0, regions: [phone]))
+        take(pipeline.expire(now: 0.221, regions: [phone]))
+        take(pipeline.handle(event(.leftDown, 400, 900, 0.3), from: 0, regions: [phone]))
+        #expect(deltas.allSatisfy { abs($0) <= 31 })
+    }
+
+    @Test("端到端：滑的中途丢了几下（同方向一下跳 130 点）：仍是同一笔，跳过的那段照样滚")
+    func droppedSamplesStayInStroke() {
+        var pipeline = TouchPipeline(shapers: [CrossDeskShaper()])
+        var phasesSeen: [ScrollPhase] = []
+        var scrolled = 0.0
+        func take(_ step: TouchStep) {
+            phasesSeen += phases(step)
+            scrolled += commands(step).compactMap { if case .scroll(let s) = $0 { s.deltaY } else { nil } }.reduce(0, +)
+        }
+        for i in 0...3 { take(pipeline.handle(event(.move, 100, 300 + 20 * Double(i), 0.016 * Double(i)), from: 0, regions: [phone])) }
+        take(pipeline.handle(event(.move, 100, 490, 0.08), from: 0, regions: [phone]))
+        take(pipeline.handle(event(.move, 100, 510, 0.096), from: 0, regions: [phone]))
+        #expect(phasesSeen.filter { $0 == .began }.count == 1)
+        #expect(!phasesSeen.contains(.ended))
+        #expect(scrolled >= 189)
     }
 
     @Test("端到端：快甩（60Hz，每下隔 110 点）照样滚动并带惯性")

@@ -148,6 +148,9 @@ private final class TapSession: @unchecked Sendable {
         let pointer = PointerEvent(kind, at: event.location, time: ProcessInfo.processInfo.systemUptime)
         let step = pipeline.handle(pointer, from: source, regions: regions.withLock { $0 })
         apply(step, current: event)
+        // 放行的左键事件（按住选择时的拖动、抬起）也按这一串连击改计数，和补发的按下对得上。
+        // 只改连击里的（计数大于 1）：这时只读不记，远控在拖动上不写计数（0）也不会把这一串提前清掉
+        if step.passOriginal, kind != .move, event.getIntegerValueField(.mouseEventClickState) > 1 { Self.recount(event, &clicks) }
         return step.passOriginal ? pass : nil
     }
 
@@ -167,7 +170,8 @@ private final class TapSession: @unchecked Sendable {
     private func perform(_ command: TouchCommand, current: CGEvent?, region: TouchRegion?) {
         switch command {
         case .resetClickCount:
-            if let current { clicks.skip(before: current.getIntegerValueField(.mouseEventClickState)) }
+            // 按扣住的按下算（这一组接着就补发它）：抬起上的计数远控未必写全
+            if let raw = (heldPress ?? current)?.getIntegerValueField(.mouseEventClickState) { clicks.skip(before: raw) }
         case .replayPress:
             if let heldPress { Self.recount(heldPress, &clicks) }
             TouchEvents.post(heldPress)
