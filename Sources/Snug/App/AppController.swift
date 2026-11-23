@@ -245,13 +245,14 @@ final class AppController: Sendable {
                 snugDisplaysOnlineSince[display] = now
             }
         }
-        let since = online.compactMap { snugDisplaysOnlineSince[$0] }.max()
+        // 只看能单独显示的：镜像组里的从属屏远控本来就切不过去，重启它也没用
         let all = Screens.standalone()
+        let reachable = all.map { online.intersection($0) } ?? online
+        let since = reachable.compactMap { snugDisplaysOnlineSince[$0] }.max()
         let stale = remotes.map(\.identity).filter { identity in
             guard identity.readsDisplaysOnce, let since else { return false }
             if let registered = readings.first(where: { $0.remote == identity })?.observation.registeredDisplays, let all {
-                // 只看能单独显示的：镜像组里的从属屏远控本来就切不过去，重启它也没用
-                return RegisteredDisplays.misses(registered, snug: online.intersection(all), online: all)
+                return RegisteredDisplays.misses(registered, snug: reachable, online: all)
             }
             let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
             return apps.contains { ($0.launchDate ?? .distantFuture) < since }

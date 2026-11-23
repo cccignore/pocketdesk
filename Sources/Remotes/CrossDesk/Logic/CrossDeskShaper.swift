@@ -11,9 +11,7 @@
 //   到达的时刻是网络最靠不住的量（丢包、成批到达、卡住后隔几毫秒放出一下），能看轨迹就只看轨迹：
 //   上一步看得出方向，就看这一步跟不跟得上（大致同向、长度不超过上一步几倍）；上一步太短（刚落指、停了一下、慢慢收尾）时，
 //   掉了头的是另一个手势（从静止到一帧走一百多点物理上做不到，不会是同一笔里往回拖），不掉头的才看隔了多久；
-//   前一甩卡住后才到的尾巴（从它终点附近冒出来、还看不出方向）不连到后面跳得远的一下。
-//   接上的远的一步要等下一下到了才交出去（压着），下一下紧接着就掉了头，那一步就是两次落指之间的空当（卡住后放出、
-//   快甩后顺势往前落指再往回甩）：前一笔收在它之前，它当后一笔的开头。同一笔里刚走完一大步马上往回，物理上做不到
+//   前一甩卡住后才到的尾巴（从它终点附近冒出来、还看不出方向）不连到后面跳得远的一下
 // - 到点收尾时，压着的那下属于已经开始的那一笔就交出去（短甩只有两三下，少一下就不滚了），孤零零的一下扔掉
 // - 按下的时刻往前推 holdDelay，还原手指真正落下的时刻：翻译器按 iPhone 的习惯判点击、长按右键、长按选择照旧成立
 // 不按键的移动都原样放行（指针跟着手指走，和 CrossDesk 本来一样），整理出的输入都不代表它。
@@ -53,8 +51,6 @@ package struct CrossDeskShaper: TouchShaper {
     private var strokeStart: (point: CGPoint, time: TimeInterval)?
     /// 上一笔收尾时的最后一下：认卡住后才到的尾巴
     private var lastEnded: (point: CGPoint, time: TimeInterval)?
-    /// 压着的那一下是跳得远的一步接上来的：那一步（从这一笔交出去的最后一下到压着的这下）。下一下掉头就把它当两笔的分界
-    private var farStep: CGVector?
     /// 左键按着（按下之后、抬起之前）：这时的移动是拖动
     private var leftHeld = false
 
@@ -68,26 +64,18 @@ package struct CrossDeskShaper: TouchShaper {
             return [current(.drag, event)]
         case .move:
             var out: [ShapedInput] = []
-            if let last = held, let far = farStep, stroke != nil, Self.turnsBack(from: last, to: event, after: far) {
-                // 远的那一步之后马上掉头：那一步是两笔之间的空当，前一笔收在它之前，压着的那下当后一笔的开头
-                out = finishStroke()
-            }
-            farStep = nil
             if let last = held, !continues(last, with: event) {
                 // 另一个手势。压着的那下接着已经开始的那一笔（它到的时候判过），算它的；孤零零的一下扔掉
-                out += (stroke == nil ? [] : flushHeld()) + finishStroke()
+                out = (stroke == nil ? [] : flushHeld()) + finishStroke()
                 held = nil
             }
-            let joinedFar = held.map { hypot(event.location.x - $0.point.x, event.location.y - $0.point.y) > Self.maxStep } ?? false
             out += flushHeld()
-            if joinedFar, let last = stroke { farStep = CGVector(dx: event.location.x - last.point.x, dy: event.location.y - last.point.y) }
             held = (event.location, event.time)
             return out
         case .leftDown:
             leftHeld = true
             // 压着的那一下是这次按下的前导，扔掉
             held = nil
-            farStep = nil
             var press = current(.press, event)
             press.input.time -= Self.holdDelay
             return finishStroke() + [press]
@@ -130,13 +118,6 @@ package struct CrossDeskShaper: TouchShaper {
         return gap < Self.splitGap
     }
 
-    /// 从 last 到 event 是紧接着远的那一步（far）的一小步（看得出方向、不算远），而且掉了头
-    private static func turnsBack(from last: (point: CGPoint, time: TimeInterval), to event: PointerEvent, after far: CGVector) -> Bool {
-        let next = CGVector(dx: event.location.x - last.point.x, dy: event.location.y - last.point.y)
-        let length = hypot(next.dx, next.dy)
-        return length >= minDirectionStep && length <= maxStep && cosine(next, far) < minTurnCosine
-    }
-
     /// 从 start 开始的这一下或这一笔是前一甩卡住后才到的尾巴：从它终点附近冒出来，收尾后不久（挤在一起到时放宽）
     private func isStraggler(_ start: (point: CGPoint, time: TimeInterval), bunched: Bool) -> Bool {
         guard let ended = lastEnded, hypot(start.point.x - ended.point.x, start.point.y - ended.point.y) <= Self.maxStep else { return false }
@@ -160,7 +141,6 @@ package struct CrossDeskShaper: TouchShaper {
 
     /// 给已经开始的那一笔补一个抬起，记在交出去的最后一下的时刻：翻译器按松手前的速度算惯性
     private mutating func finishStroke() -> [ShapedInput] {
-        farStep = nil
         guard let last = stroke else { return [] }
         stroke = nil
         lastEnded = last
