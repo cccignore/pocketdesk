@@ -45,6 +45,13 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         // 断开了还在等重连的 15 秒里给个出口，不用干等（issue #29）
         if state.connection == .reconnecting { menu.addItem(action("立即结束本次远程", #selector(endSessionNow), symbol: "xmark.circle")) }
         if state.legacyAppRunning { menu.addItem(action("退出旧版 UU远程伴侣", #selector(quitLegacy), symbol: "xmark.circle")) }
+        // 只在启动时读一次显示器的远控比 Snug 的屏先启动（多半是开机时两个都自动打开）：它的屏幕列表里没有 Snug 的屏
+        if state.connection == .idle, !state.staleRemotes.isEmpty {
+            let names = state.staleRemotes.joined(separator: "、")
+            let restart = action("重启 \(names)", #selector(restartStale), symbol: "arrow.clockwise")
+            restart.toolTip = "\(names) 比 Snug 的屏先启动，看不到这些屏；重启后它重新读显示器"
+            menu.addItem(restart)
+        }
         // 主屏常驻、本机看不到时，菜单栏是回到 Mac 前最好找的出口
         if state.config.mainScreen != nil { menu.addItem(action("取消设为主屏", #selector(cancelMain), symbol: "menubar.rectangle")) }
         menu.addItem(.separator())
@@ -80,6 +87,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func quitLegacy() { intents.quitLegacyApp() }
+    @objc private func restartStale() { intents.restartStaleRemotes() }
     @objc private func cancelMain() { intents.setMainScreen(nil) }
     @objc private func endSessionNow() { intents.endSessionNow() }
     @objc private func openSettings() { navigation.openSettings(on: clickedScreen?.displayID) }

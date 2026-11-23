@@ -120,6 +120,31 @@ extension AppController: AppIntents {
 
     func quitLegacyApp() { LegacyApp.quit() }
 
+    func restartStaleRemotes() {
+        guard state.connection == .idle else { return Log.info("远程进行中，不重启 \(state.staleRemotes.joined(separator: "、"))") }
+        for identity in remotes.map(\.identity) where state.staleRemotes.contains(identity.displayName) {
+            Task { await restart(identity) }
+        }
+    }
+
+    /// 退出、等它退完（最多 10 秒）、再打开。退不掉（弹了确认框、卡住）就不再打开，菜单里的「重启」留着可以再点
+    private func restart(_ identity: RemoteIdentity) async {
+        let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
+        guard let url = apps.compactMap(\.bundleURL).first else { return Log.warn("要重启 \(identity.displayName)，可它已经没在运行") }
+        Log.info("重启 \(identity.displayName)（\(url.path)）：它比 Snug 的屏先启动，看不到这些屏")
+        apps.forEach { _ = $0.terminate() }
+        for _ in 0..<100 where apps.contains(where: { !$0.isTerminated }) { try? await Task.sleep(for: .milliseconds(100)) }
+        guard apps.allSatisfy(\.isTerminated) else {
+            return Log.warn("\(identity.displayName) 10 秒内没退出（可能弹了确认框），没有重新打开")
+        }
+        do {
+            _ = try await NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+            Log.info("已重新打开 \(identity.displayName)")
+        } catch {
+            Log.error("重新打开 \(identity.displayName) 失败（\(url.path)）：\(error)")
+        }
+    }
+
     func quit() { onQuitRequested?() }
 
     func checkForUpdates() { updater.check(userInitiated: true) }

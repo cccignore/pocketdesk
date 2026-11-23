@@ -40,6 +40,8 @@ final class AppState {
     var configSaveFailed = false
     /// 旧版「UU远程伴侣」正在运行
     var legacyAppRunning = false
+    /// 比 Snug 此刻在线的屏先启动、看不到这些屏的远控（只在启动时读一次显示器的那种），界面名。菜单栏给「重启」
+    var staleRemotes: [String] = []
     /// 正在退出收尾
     var quitting = false
     /// 应用内更新：查到了什么、进行到哪（Updater 写）
@@ -123,6 +125,8 @@ protocol AppIntents: AnyObject, Sendable {
     func openLoginItemsSettings()
     func markWelcomed()
     func quitLegacyApp()
+    /// 重启 staleRemotes 里的远控：退出、再打开，它重新读显示器才看得到 Snug 的屏。远程中不动
+    func restartStaleRemotes()
     /// 不等重连窗口，立即结束本次远程（断开后的重连等待期里才有意义，issue #29）
     func endSessionNow()
     func quit()

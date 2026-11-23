@@ -27,7 +27,7 @@ final class AppController: Sendable {
     /// --preview-screens：不等远程就建出开着的屏
     private let preview: Bool
     /// 登记的远控适配器，按登记顺序（两家同时报在场时归第一家）
-    private let remotes = Remotes.all.map { $0.adapter.init() }
+    let remotes = Remotes.all.map { $0.adapter.init() }
     private var session = RemoteSession()
     private let touch: TouchTap
     private var watcher: DisplayWatcher?
@@ -38,6 +38,9 @@ final class AppController: Sendable {
     private var gestureScreens: Set<ScreenID> = []
     /// 常驻：装着只在启动时读一次显示器的远控时，开着的屏不等远程（见 ScreenPlan）
     private var resident = false
+    /// Snug 的屏上一拍在线的编号，和最近一次有新的屏上线的时刻：只在启动时读一次显示器的远控比它早启动就看不到
+    private var snugDisplays: Set<DisplayID> = []
+    private var snugDisplaysSince: Date?
     /// 单调时钟的起点：系统改时间不会让「已经过了多久」算错
     private let anchor = (date: Date(), uptime: ProcessInfo.processInfo.systemUptime)
 
@@ -145,6 +148,7 @@ final class AppController: Sendable {
         let wallClock = Date()
         handle(session.update(remotes.map { RemoteReading(remote: $0.identity, observation: $0.sample(wallClock: wallClock)) }, now: now))
         keepPointerOffSnugScreens()
+        refreshStaleRemotes(at: wallClock)
         if now.timeIntervalSince(lastVerifyAt) >= Self.verifyInterval {
             lastVerifyAt = now
             desks.verifyPlacement()
@@ -194,6 +198,23 @@ final class AppController: Sendable {
     func applyPlan() {
         desks.setWishes(ScreenPlan.wishes(config: store.config, remote: session.inEpisode, trusted: state.accessibilityTrusted,
                                           preview: preview, resident: resident))
+    }
+
+    /// 只在启动时读一次显示器的远控，启动得比 Snug 此刻在线的屏晚才看得到它们。开机时两个都自动打开，谁先谁后说不准：
+    /// 每拍看一眼，有新的屏上线就记下时刻，远控的进程比它早启动就列进 staleRemotes，菜单栏给「重启」
+    private func refreshStaleRemotes(at now: Date) {
+        let online = Set(state.desks.desks.values.compactMap(\.display))
+        if !online.subtracting(snugDisplays).isEmpty { snugDisplaysSince = now }
+        snugDisplays = online
+        let stale = remotes.map(\.identity).filter { identity in
+            guard identity.readsDisplaysOnce, let since = snugDisplaysSince, !online.isEmpty else { return false }
+            let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
+            return apps.contains { ($0.launchDate ?? .distantFuture) < since }
+        }.map(\.displayName)
+        guard stale != state.staleRemotes else { return }
+        Log.info(stale.isEmpty ? "只在启动时读一次显示器的远控都看得到 Snug 的屏了"
+                               : "\(stale.joined(separator: "、")) 比 Snug 的屏先启动，看不到这些屏：要重启它（菜单栏有「重启」）")
+        state.staleRemotes = stale
     }
 
     /// 装着只在启动时读一次显示器的远控就常驻。装上、卸掉随时会变，和核对窗口同一拍重看
