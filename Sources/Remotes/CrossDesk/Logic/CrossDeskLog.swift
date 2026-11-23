@@ -33,13 +33,20 @@ package struct CrossDeskLogRecord: Equatable, Sendable {
 
     /// 最近一次启动时读到的显示器，按它的顺序。index 从 0 重新数起就是新的一批
     package static func lastEnumeration(_ records: [CrossDeskLogRecord]) -> [DisplayID] {
-        var batch: [DisplayID] = []
+        enumeration(since: .distantPast, in: records) ?? []
+    }
+
+    /// 最后一批在 since 之后（含）才开始读的显示器：since 取这个进程的启动时刻，就是这次启动登记的那几块。
+    /// 刚启动、还没读到为 nil。它按这几个位置注册视频流，之后编号变了的屏落在同一位置照样切得到（screen_capturer_sck_impl.mm）
+    package static func enumeration(since: Date, in records: [CrossDeskLogRecord]) -> [DisplayID]? {
+        var batch: (start: Date, displays: [DisplayID])?
         for record in records {
             guard case .displayDiscovered(let index, let display) = record.event else { continue }
-            if index == 0 { batch = [] }
-            batch.append(display)
+            if index == 0 || batch == nil { batch = (record.date, []) }
+            batch?.displays.append(display)
         }
-        return batch
+        guard let batch, batch.start >= since else { return nil }
+        return batch.displays
     }
 
     private static let dateFormat: DateFormatter = {

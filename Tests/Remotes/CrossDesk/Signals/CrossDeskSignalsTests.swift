@@ -13,6 +13,11 @@ struct CrossDeskSignalsTests {
         #expect(!CrossDeskSignals(running: false, sharing: false).observation().present)
         #expect(CrossDeskSignals(running: true, sharing: nil).observation().evidence == "进程=在 共享桌面=读不到")
         #expect(!CrossDeskSignals(running: true, sharing: nil).observation().present)
+        // 它这次启动登记了几块显示器，交给核心判断要不要重启它；不改信号快照
+        let slotted = CrossDeskSignals(running: true, sharing: false, slots: 2).observation()
+        #expect(slotted.displaySlots == 2)
+        #expect(slotted.evidence == "进程=在 共享桌面=否")
+        #expect(CrossDeskSignals(running: true, sharing: false).observation().displaySlots == nil)
     }
 
     @Test("身份：按记号认注入的事件（界面和注入是同一个程序），资源库排除 CrossDesk 自己")
@@ -72,5 +77,14 @@ struct CrossDeskLogTests {
         #expect(CrossDeskLogRecord.lastEnumeration(records) == [1, 7])
         #expect(CrossDeskLogRecord.lastEnumeration(Array(records.prefix(4))) == [1])
         #expect(CrossDeskLogRecord.lastEnumeration([]).isEmpty)
+    }
+
+    @Test("这次启动读到的那一批：取在启动时刻之后开始的最后一批；刚启动还没读到时为 nil")
+    func enumerationSinceLaunch() throws {
+        let records = sample.split(separator: "\n").compactMap { CrossDeskLogRecord(line: String($0)) }
+        let second = try #require(records.first { $0.event == .displayDiscovered(index: 1, display: 7) }?.date)
+        #expect(CrossDeskLogRecord.enumeration(since: second.addingTimeInterval(-60), in: records) == [1, 7])
+        #expect(CrossDeskLogRecord.enumeration(since: second.addingTimeInterval(60), in: records) == nil)
+        #expect(CrossDeskLogRecord.enumeration(since: .distantPast, in: []) == nil)
     }
 }

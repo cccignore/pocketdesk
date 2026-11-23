@@ -155,9 +155,10 @@ final class AppController: Sendable {
         refreshTrust()
         screenshots.expire()
         let wallClock = Date()
-        handle(session.update(remotes.map { RemoteReading(remote: $0.identity, observation: $0.sample(wallClock: wallClock)) }, now: now))
+        let readings = remotes.map { RemoteReading(remote: $0.identity, observation: $0.sample(wallClock: wallClock)) }
+        handle(session.update(readings, now: now))
         keepPointerOffSnugScreens()
-        refreshStaleRemotes(at: wallClock)
+        refreshStaleRemotes(at: wallClock, readings: readings)
         if now.timeIntervalSince(lastVerifyAt) >= Self.verifyInterval {
             lastVerifyAt = now
             desks.verifyPlacement()
@@ -227,10 +228,11 @@ final class AppController: Sendable {
                                           preview: preview, resident: resident, insets: state.clientInsets))
     }
 
-    /// 只在启动时读一次显示器的远控，启动得比 Snug 此刻在线的屏晚才看得到它们。开机时两个都自动打开，谁先谁后说不准：
-    /// 每拍看一眼，远控的进程比此刻在线的哪块屏这一次上线早，就列进 staleRemotes，菜单栏给「重启」。
-    /// 屏上线和下一拍之间（最多 0.5 秒）启动的会误报一次，重启无害
-    private func refreshStaleRemotes(at now: Date) {
+    /// 只在启动时读一次显示器的远控，按启动时登记的块数切显示器，多出来的屏切不过去。开机时两个都自动打开，谁先谁后说不准：
+    /// 每拍看一眼，列进 staleRemotes，菜单栏给「重启」。远控报了登记几块（RemoteObservation.displaySlots）时只看块数：
+    /// Snug 重启后屏换了编号，落在它登记的位置里照样切得到，不用重启。没报时按启动时刻比：远控的进程比此刻在线的哪块屏
+    /// 这一次上线早就算看不到（屏上线和下一拍之间启动的会误报一次，重启无害）
+    private func refreshStaleRemotes(at now: Date, readings: [RemoteReading]) {
         let online = Set(state.desks.desks.values.compactMap(\.display))
         let uptime = ProcessInfo.processInfo.systemUptime
         for display in snugDisplaysOnlineSince.keys where !online.contains(display) && snugDisplaysGoneAt[display] == nil {
@@ -244,8 +246,12 @@ final class AppController: Sendable {
             }
         }
         let since = online.compactMap { snugDisplaysOnlineSince[$0] }.max()
+        let displays = Screens.standalone()?.count
         let stale = remotes.map(\.identity).filter { identity in
             guard identity.readsDisplaysOnce, let since else { return false }
+            if let slots = readings.first(where: { $0.remote == identity })?.observation.displaySlots, let displays {
+                return displays > slots
+            }
             let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
             return apps.contains { ($0.launchDate ?? .distantFuture) < since }
         }.map(\.displayName)

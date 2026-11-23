@@ -54,19 +54,20 @@ ChatGPT 的窗口最小 600 点高，540 宽的屏上让出键盘后只剩 558 �
 
 ## 屏常驻
 
-CrossDesk 在启动时读一次显示器列表，按当时的数目注册视频流，之后加的屏它看不到、切不过去（`screen_capturer_sck_impl.mm`、`session_device_manager.cpp`）。Snug 平时是察觉连接后才建屏的，对 CrossDesk 来不及，所以：
+CrossDesk 在启动时读一次显示器列表，按当时的数目注册视频流（一块一个位置），之后多出来的屏它切不过去（`screen_capturer_sck_impl.mm`、`session_device_manager.cpp`）。位置里原来那块屏不在了，它改抓列表里同一位置上的屏，所以 Snug 重启后屏换了编号，在它的显示器菜单里照样切得到（模拟器实测：#22 换成 #23，手机重连后切到第 2 块，画面是新屏）。Snug 平时是察觉连接后才建屏的，对 CrossDesk 来不及，所以：
 
 - **常驻**：装着 CrossDesk 时，屏幕列表里开着的屏不等远程、一直留着（`ScreenPlan` 的 `resident`）
 - **远程结束**：屏不撤，屏上的窗口放回原处、字号复原，回到 App 资源库；设为主屏的那块照旧原样留着
 - **没人远程时**：常驻的屏本机看不见，指针停上去就收回
-- **启动顺序**：CrossDesk 比 Snug 的屏先启动（开机时两个都自动打开）就看不到屏。Snug 每拍比较它的启动时刻和每块屏头一回上线的时刻，菜单栏在没人远程时给「重启 CrossDesk」：退出、等它退完、再打开
+- **启动顺序**：CrossDesk 比 Snug 的屏先启动（开机时两个都自动打开）就少登记了 Snug 的屏。适配器在 CrossDesk 每次启动后读一次它的日志，报这次登记了几块显示器（`RemoteObservation.displaySlots`）；此刻在线的屏比这多时，菜单栏在没人远程时给「重启 CrossDesk」：退出、等它退完、再打开。读不到日志时退回按启动时刻比：它比哪块屏这一次上线早就提示
+- **远程中 Snug 重启**：屏撤掉的那一刻 CrossDesk 改抓内建屏（同一路视频流），手机上的画面换成 Mac 的主屏、比例不对。新屏建好后在 CrossDesk 的显示器菜单里再选一次 Snug 的屏，或者断开重连
 - **手势只接管装着的远控**：没装 CrossDesk 时不收不按键的移动，事件监听和只有 UU 时一样；装着时本机的指针移动也会经过 Snug 的事件监听（原样放行）
 
 ## 兼容自检
 
 `scripts/snug remote-check crossdesk [小时]`（即 `Snug --check-remote crossdesk`），`--dump-remote crossdesk` 打印原始信号。
 
-- **核对项**：装没装、在不在运行；读不读得到电源断言；Snug 在线的屏在不在 CrossDesk 最近一次启动时读到的显示器里（取自它的日志 `~/Library/Logs/CrossDesk/crossdesk.log` 中的 `macOS display discovered`）；回看时段内 CrossDesk 日志里的远程次数和 Snug 察觉到的次数
+- **核对项**：装没装、在不在运行；读不读得到电源断言；此刻在线的屏有没有超过 CrossDesk 最近一次启动时登记的块数（取自它的日志 `~/Library/Logs/CrossDesk/crossdesk.log` 中的 `macOS display discovered`），Snug 的屏换了编号的照样算切得到；回看时段内 CrossDesk 日志里的远程次数和 Snug 察觉到的次数
 - **判定**：位于 `RemoteCrossDesk` 的 `CrossDeskCheck`
 
 ## 和 UU远程 不同、待真机核对的

@@ -37,19 +37,22 @@ package enum CrossDeskCheck {
         package var enumerated: [DisplayID]
         /// 此刻在线的 Snug 的屏
         package var onlineSnugDisplays: Set<DisplayID>
+        /// 此刻在线、能单独显示的屏一共几块（含 Snug 的，不含镜像组里的从属屏）
+        package var onlineDisplays: Int
         /// 回看的这段时间里，它的日志记了几次远程开始（有控制端连上、开始抓屏）
         package var sessionsInLog: Int
         /// 同一段时间里，Snug 日志记了几次「检测到 CrossDesk 连入」
         package var detectionsInSnugLog: Int
 
         package init(version: String?, running: Bool, signals: CrossDeskSignals, logReadable: Bool, enumerated: [DisplayID],
-                     onlineSnugDisplays: Set<DisplayID>, sessionsInLog: Int, detectionsInSnugLog: Int) {
+                     onlineSnugDisplays: Set<DisplayID>, onlineDisplays: Int, sessionsInLog: Int, detectionsInSnugLog: Int) {
             self.version = version
             self.running = running
             self.signals = signals
             self.logReadable = logReadable
             self.enumerated = enumerated
             self.onlineSnugDisplays = onlineSnugDisplays
+            self.onlineDisplays = onlineDisplays
             self.sessionsInLog = sessionsInLog
             self.detectionsInSnugLog = detectionsInSnugLog
         }
@@ -99,13 +102,18 @@ package enum CrossDeskCheck {
         guard f.logReadable else {
             return Item(status: .warn, title: title, detail: "读不到 CrossDesk 的日志（\(CrossDeskLogRecord.path.path)），看不出它启动时读到了哪些显示器")
         }
-        let unseen = f.onlineSnugDisplays.subtracting(f.enumerated).sorted()
-        guard unseen.isEmpty else {
-            let list = unseen.map { "#\($0)" }.joined(separator: "、")
+        // 它按启动时登记的几个位置切显示器，编号变了的屏落在同一位置照样切得到：只看块数够不够
+        let unseen = f.onlineSnugDisplays.subtracting(f.enumerated).sorted().map { "#\($0)" }.joined(separator: "、")
+        guard f.onlineDisplays <= f.enumerated.count else {
             return Item(status: .fail, title: title,
-                        detail: "CrossDesk 启动时没读到 Snug 的屏 \(list)（它只在启动时读一次显示器）：屏建好之后重启 CrossDesk")
+                        detail: "CrossDesk 启动时登记了 \(f.enumerated.count) 块显示器，此刻在线 \(f.onlineDisplays) 块（Snug 的屏 \(unseen)）："
+                            + "多出来的它切不过去（它只在启动时读一次显示器），屏建好之后重启 CrossDesk")
         }
         let list = f.enumerated.map { "#\($0)" }.joined(separator: "、")
+        guard unseen.isEmpty else {
+            return Item(status: .ok, title: title,
+                        detail: "它启动时读到 \(list)；Snug 的屏 \(unseen) 是之后换了编号的，落在它登记的位置里，在它的显示器菜单里照样切得到")
+        }
         return Item(status: .ok, title: title, detail: "它启动时读到 \(list)，在线的 Snug 屏都在里面")
     }
 
