@@ -129,6 +129,10 @@ public final class Desk {
     }
     /// 键盘让位跟着焦点走（followFocus）：换窗口、回资源库、换比例时从头认
     private var follow = KeyboardFollow()
+    /// 最近铺上过这块屏的窗口，新的在前：小横条上左右滑切回其中最近的另一个（DeskSet.switchBack）。
+    /// 只记铺成了的（铺不上的、在问用户的对话框不记），关了的切的时候才发现、才忘掉
+    private(set) var recent: [WindowInfo] = []
+    static let recentLimit = 5
     /// 发过几个号、排着没做的号、正在做的事（见 Ticket）
     private var issued = 0
     private var queued: [(ticket: Ticket, work: Work)] = []
@@ -262,6 +266,21 @@ public final class Desk {
         if state.keyboardRoom != want { follow.missed(want) }
     }
 
+    /// 切回时能选的：最近铺上过这块屏、此刻不在这块屏上的，新的在前
+    var switchCandidates: [WindowInfo] { recent.filter { $0.key != placedWindow } }
+
+    /// 切回时发现它已经关了
+    func forgetRecent(_ window: WindowKey) { recent.removeAll { $0.key == window } }
+
+    /// 远程结束：这次远程放过的窗口不带到下一次（下一次可能是别的设备、别的人，窗口可能已经在 Mac 上用着）
+    func forgetRecent() { recent = [] }
+
+    private func remember(_ window: WindowInfo) {
+        recent.removeAll { $0.key == window.key }
+        recent.insert(window, at: 0)
+        if recent.count > Self.recentLimit { recent.removeLast(recent.count - Self.recentLimit) }
+    }
+
     /// 屏幕模块里这块屏的状态变了。新屏从干净的提示开始：没屏时轮到的动作（比如盯着的退出排进队的放对话框）会留下提示
     func screenChanged(_ screen: ScreenSet.State) {
         if screen.display != nil, state.display == nil { state.notice = nil }
@@ -298,6 +317,7 @@ public final class Desk {
         let took = String(format: "%.1f", timeline.now - started)
         let fill = describeFill(got, in: screens.windowArea(id, withHomeBar: true), width: screens.width(id) ?? next.width)
         Log.info("\(window.label) 放上屏 #\(display)（\(took)s）：原位 \(next.record.original.short)\(was)，\(fill)")
+        if zoom { remember(window) }
 
         // 带着字号回来的不重复放大，只补差的那几级
         let steps = env.zoomBook.steps(for: window.bundleID, default: env.defaultZoom) - next.record.zoom

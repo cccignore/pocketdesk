@@ -91,6 +91,7 @@ final class RenderStub: AppIntents, TouchIntents, Navigation {
     func dismissNotice() {}
     func showList() {}
     func toggleKeyboardRoom() {}
+    func switchBack() {}
     func returnToPlaced() {}
     func putBack() {}
     func putBack(_ window: WindowKey) {}

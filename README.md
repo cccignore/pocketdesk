@@ -68,6 +68,7 @@ UU远程 移动端沿用触控板的手势逻辑；Snug 在手机屏与平板屏
 | 单指滑动 | 鼠标拖拽，易误选文字 | 页面滚动，松手保留惯性 |
 | 长按后拖动 | 鼠标拖拽 | 拖选文字 |
 | 长按松开 | 普通点击 | 右键菜单 |
+| 底部指示条左右滑 | 无 | 切回上一个窗口 |
 
 <p align="center"><img src="https://dl.zephyrxiang.com/snug/media/phone-demo.2cee4e81.webp" width="30%" alt="实机演示：打开窗口、弹出键盘输入命令、恢复会话、单指滚动、返回列表"> <img src="https://dl.zephyrxiang.com/snug/media/phone-context-menu.997dd70f.png" width="30%" alt="长按调出右键菜单"><br><sub>单指滚动 · 长按调出右键菜单</sub></p>
 

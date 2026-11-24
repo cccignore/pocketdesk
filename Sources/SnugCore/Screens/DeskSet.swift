@@ -283,6 +283,40 @@ public final class DeskSet {
         lane.run { await desk.followFocus(focus, in: window) }
     }
 
+    /// 小横条上左右滑：切回这块屏最近放过的另一个窗口（Desk.switchCandidates），和在资源库里点它一样，屏上这个放回原位。
+    /// 跳过正在退出、正在关的，和正放在别的屏上的（别的设备正看着它，不抢过来）；关了的忘掉、接着往前找。一个都没有就什么都不做。
+    /// 滑的这一下就挑好、排上号（屏上马上显示「正在打开」）；这块屏还在做上一个动作时这一下不算：
+    /// 连滑两下（以为没反应、或一长笔被整理成两笔）不然会切过去又切回来
+    public func switchBack(on id: ScreenID) {
+        guard let desk = desks[id] else { return }
+        guard desk.state.work == nil else { return Log.info("小横条上左右滑：屏（\(id)）还在忙上一个动作，这一下不算") }
+        let candidates = desk.switchCandidates.filter(switchable)
+        guard let first = candidates.first else { return }
+        let ticket = desk.begin(.placing(first))
+        lane.run {
+            await desk.perform(ticket) {
+                // 排队的这会儿可能变了：再查一遍
+                for window in candidates where window.key != desk.placedWindow && self.switchable(window) {
+                    guard await self.windows.look(window.key) != nil else {
+                        if case .windowGone = await self.env.unreachable(window) { desk.forgetRecent(window.key) }
+                        continue
+                    }
+                    Log.info("小横条上左右滑：切回 \(window.label)")
+                    desk.advance(to: .placing(window))
+                    await self.place(window, on: desk)
+                    return
+                }
+                Log.info("小横条上左右滑：这块屏最近放过的窗口都关了、在别的屏上或正在退出，没有能切回的")
+            }
+        }
+    }
+
+    /// 能不能切回这个窗口：App 没在退出、窗口没在关，也没放在别的屏上
+    private func switchable(_ window: WindowInfo) -> Bool {
+        !state.quitting.contains(window.key.pid) && !state.closing.contains(window.key) && holder(of: window.key) == nil
+            && !desks.values.contains { $0.state.brought.contains(window.key) }
+    }
+
     /// 列表左上角的返回键：回到屏上的窗口。换档要一会儿，期间和放窗口一样显示「正在打开」、列表点不了
     public func returnToPlaced(on id: ScreenID) {
         guard let desk = desks[id], let placed = desk.state.placed else { return }
@@ -575,6 +609,7 @@ public final class DeskSet {
     private func endSession() async {
         for desk in orderedDesks {
             desk.setNotice(nil)
+            desk.forgetRecent()
             guard let wish = wishes.first(where: { $0.id == desk.id }), wish.resident, !wish.main,
                   screens.display(desk.id) != nil else { continue }
             let had = desk.state.placed != nil

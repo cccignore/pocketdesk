@@ -208,6 +208,7 @@ final class ScreenWindows {
         bar.onActivate = { [weak self] in self?.intents.showList() }
         bar.onCapture = { [weak self] in self?.intents.takeScreenshot() }
         bar.onKeyboard = { [weak self] in self?.intents.toggleKeyboardRoom() }
+        bar.onSwitchBack = { [weak self] in self?.intents.switchBack() }
         homeBar = TouchPanel(content: bar)
         homeBarView = bar
     }
@@ -282,12 +283,11 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
 /// 远控的键盘会盖住画面底下时右边多一个键盘键（keyboard），点右边这一段是让出键盘 / 铺回整屏。
 /// 屏换到更宽的一档时跟着放大（scale），在手机上看着、点着、滑着都和基准宽度一样
 final class HomeBarView: NSView {
-    /// 基准宽度下往上滑过这么多点算数
-    static let swipeDistance: CGFloat = 12
-
     var onActivate: (() -> Void)?
     var onCapture: (() -> Void)?
     var onKeyboard: (() -> Void)?
+    /// 左右滑：切回这块屏上一个窗口
+    var onSwitchBack: (() -> Void)?
     /// 这一档比基准宽度宽几倍（ScreenFit.scale）
     var scale: CGFloat = 1 {
         didSet { if scale != oldValue { updateIcons() } }
@@ -307,7 +307,7 @@ final class HomeBarView: NSView {
     private let grabber = NSImageView()
     private let camera = NSImageView()
     private let keyboard = NSImageView()
-    private var swipe: CGFloat = 0
+    private var swipe = HomeBarSwipe()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -385,13 +385,13 @@ final class HomeBarView: NSView {
         }
     }
 
-    /// 手势翻译把单指上滑变成滚动：手指往上走，滚动量是负的
+    /// 手势翻译把单指滑动变成滚动：往上滑回资源库，左右滑切回上一个窗口（HomeBarSwipe）
     override func scrollWheel(with event: NSEvent) {
-        if event.phase == .began { swipe = 0 }
-        swipe += event.scrollingDeltaY
-        if swipe <= -Self.swipeDistance * scale {
-            swipe = 0
-            onActivate?()
+        if event.phase == .began { swipe.began() }
+        switch swipe.scroll(dx: event.scrollingDeltaX, dy: event.scrollingDeltaY, scale: scale, momentum: !event.momentumPhase.isEmpty) {
+        case .showList: onActivate?()
+        case .switchBack: onSwitchBack?()
+        case nil: break
         }
     }
 }

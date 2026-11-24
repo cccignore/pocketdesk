@@ -232,6 +232,7 @@ final class ScreenIntents: TouchIntents {
     func showList() { desks.showList(on: id) }
 
     func toggleKeyboardRoom() { desks.toggleKeyboardRoom(on: id) }
+    func switchBack() { desks.switchBack(on: id) }
     func returnToPlaced() { desks.returnToPlaced(on: id) }
     func putBack() { desks.putBack(on: id) }
     func putBack(_ window: WindowKey) { desks.putBack(window, on: id) }

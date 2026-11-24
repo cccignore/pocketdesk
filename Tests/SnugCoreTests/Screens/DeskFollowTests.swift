@@ -2,7 +2,7 @@ import CoreGraphics
 import Testing
 @testable import SnugCore
 
-@Suite("键盘让位跟着焦点 Desk")
+@Suite("键盘让位跟着焦点、小横条切回上一个窗口 Desk")
 @MainActor
 struct DeskFollowTests {
     /// 手机屏的比例声明了键盘高度（CrossDesk）
@@ -132,5 +132,138 @@ struct DeskFollowTests {
         rig.windows.blockMoves(false)
         await follow(rig, .content)
         #expect(!rig.desk.state.keyboardRoom)
+    }
+
+    @Test("连滑两下（第一下还没切完）：第二下不算，不会切过去又切回来；第一下滑完马上显示正在打开")
+    func doubleSwipe() async throws {
+        let rig = try Rig()
+        await rig.ready()
+        await rig.pull(ghostty)
+        await rig.pull(safari)
+        await rig.pull(finder)
+        rig.desk.switchBack()
+        #expect(rig.desk.state.work == .placing(safari))
+        rig.desk.switchBack()
+        await rig.desk.idle()
+        #expect(rig.desk.state.placed?.window == safari)
+    }
+
+    @Test("远程结束：这次放过的窗口不带到下一次，下一次滑了什么都不做")
+    func sessionEndForgets() async throws {
+        let rig = try Rig()
+        await rig.ready()
+        await rig.pull(ghostty)
+        await rig.pull(finder)
+        rig.desk.setRemote(true)
+        rig.desk.setRemote(false)
+        await rig.desk.idle()
+        rig.journal.clear()
+        rig.desk.switchBack()
+        await rig.desk.idle()
+        #expect(!rig.journal.all.contains { $0.hasPrefix("move") })
+        #expect(rig.desk.state.placed?.window != ghostty)
+    }
+
+    private func switchBack(_ rig: Rig) async {
+        rig.desk.switchBack()
+        await rig.desk.idle()
+    }
+
+    @Test("左右滑切回上一个窗口：来回切；换下去的窗口放回原位，切回来的铺满")
+    func switchBackAndForth() async throws {
+        let rig = try Rig()
+        await rig.ready()
+        await rig.pull(ghostty)
+        await rig.pull(finder)
+        await switchBack(rig)
+        #expect(rig.desk.state.placed?.window == ghostty)
+        #expect(rig.windows.window(finder.key)?.frame == finderHome)
+        #expect(rig.windows.window(ghostty.key)?.frame == phoneArea)
+        await switchBack(rig)
+        #expect(rig.desk.state.placed?.window == finder)
+        #expect(rig.windows.window(ghostty.key)?.frame == ghosttyHome)
+    }
+
+    @Test("点了「还原」再从资源库挑了别的：滑一下回到还原前那个")
+    func afterPutBackAndPick() async throws {
+        let rig = try Rig()
+        await rig.ready()
+        await rig.pull(ghostty)
+        rig.desk.putBack()
+        await rig.desk.idle()
+        await rig.pull(finder)
+        await switchBack(rig)
+        #expect(rig.desk.state.placed?.window == ghostty)
+    }
+
+    @Test("上一个窗口关了：跳过它、切回再往前那个（审查实测的顺序：放 Ghostty、放访达、关访达、放 Safari、滑）")
+    func skipsClosed() async throws {
+        let rig = try Rig()
+        await rig.ready()
+        await rig.pull(ghostty)
+        await rig.pull(finder)
+        rig.desk.close(finder)
+        await rig.desk.idle()
+        await rig.pull(safari)
+        await switchBack(rig)
+        #expect(rig.desk.state.placed?.window == ghostty)
+        #expect(rig.desk.state.notice == nil)
+    }
+
+    @Test("铺不上的窗口不记：没放成访达，滑一下还是回到 Ghostty")
+    func failedLandNotRemembered() async throws {
+        let rig = try Rig()
+        await rig.ready()
+        await rig.pull(ghostty)
+        await rig.pull(safari)
+        rig.windows.refuseMoves { key, rect in key == finder.key && rect != finderHome }
+        await rig.pull(finder)
+        #expect(rig.desk.state.placed == nil)
+        rig.windows.refuseMoves { _, _ in false }
+        await rig.pull(notes)
+        await switchBack(rig)
+        #expect(rig.desk.state.placed?.window == safari)
+    }
+
+    @Test("最近的窗口都关了：屏上的窗口不动，不报错")
+    func allGone() async throws {
+        let rig = try Rig()
+        await rig.ready()
+        await rig.pull(ghostty)
+        await rig.pull(finder)
+        rig.windows.vanish(ghostty.key)
+        rig.journal.clear()
+        await switchBack(rig)
+        #expect(rig.desk.state.placed?.window == finder)
+        #expect(rig.desk.state.notice == nil)
+        #expect(!rig.journal.all.contains { $0.hasPrefix("move") })
+    }
+
+    @Test("还没换过窗口：滑了什么都不做")
+    func nothingToSwitchBack() async throws {
+        let rig = try Rig()
+        await rig.ready()
+        await rig.pull(ghostty)
+        rig.journal.clear()
+        await switchBack(rig)
+        #expect(rig.desk.state.placed?.window == ghostty)
+        #expect(rig.journal.all.isEmpty)
+    }
+
+    @Test("上一个窗口正放在另一块手机屏上：不抢过来，往前找；这块屏最近放过的只有它就什么都不做")
+    func skipsWindowOnAnotherScreen() async throws {
+        let rig = try Rig()
+        let second = ScreenID("second")
+        let spec = ScreenSpec(name: "Snug 第二块", productID: ScreenSpec.portraitProductID,
+                              serials: [200_100_000, 200_100_001, 200_100_002], maxPixels: ScreenFit.portraitPixels)
+        rig.set.setWishes([rig.desk.wish, ScreenWish(id: second, spec: spec, fit: .standard, behavior: .touchScreen)])
+        await rig.set.idle()
+        await rig.pull(ghostty)
+        await rig.pull(finder)
+        rig.set.pull(ghostty, on: second)
+        await rig.set.idle()
+        await switchBack(rig)
+        #expect(rig.desk.state.placed?.window == finder)
+        #expect(rig.set.state.desks[second]?.placed?.window == ghostty)
     }
 }
