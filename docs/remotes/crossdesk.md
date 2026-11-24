@@ -12,10 +12,12 @@
 
 ## 怎么用
 
-1. 被控 Mac 装 CrossDesk（[Releases](https://github.com/kunkundi/crossdesk/releases) 的 `.pkg`），按提示授予屏幕录制与辅助功能权限；iPhone 从 App Store 装 CrossDesk，设置 →「鼠标控制」的控制模式选「绝对位置」（连接中也可以在悬浮菜单里把「相对鼠标」点成「绝对鼠标」，按钮上写的是当前模式，选过会记住）
+1. 被控 Mac 装 CrossDesk（[Releases](https://github.com/kunkundi/crossdesk/releases) 的 `.pkg`），按提示授予屏幕录制与辅助功能权限；iPhone 从 App Store 装 CrossDesk（中国大陆区商店没有上架，香港、台湾、日本、新加坡、美国区有，11-24 查为 1.7.6；没有其他区账号的，按上游 `apps/ios/README.md` 用 Xcode 自己签名装），设置 →「鼠标控制」的控制模式选「绝对位置」（连接中也可以在悬浮菜单里把「相对鼠标」点成「绝对鼠标」，按钮上写的是当前模式，选过会记住）
 2. 装着 CrossDesk 时，Snug 屏幕列表里开着的屏常驻（见下文「屏常驻」），先让 Snug 把屏建好，再打开 CrossDesk。菜单栏出现「重启 CrossDesk」时点一下
 3. 手机连上后，在 CrossDesk 的悬浮菜单里切换显示器，选 Snug 的屏
 4. 不确定哪里不对时运行 `scripts/snug remote-check crossdesk`
+
+两端默认连 CrossDesk 的公共信令服务器（`api.crossdesk.cn:9099`，Mac 端见 `config_center.h`，iPhone 端见 `RemoteSessionModel.swift` 的 `officialSignalHost`），直连不通时走它的 TURN 中继，不用配置。要自建信令与中继，见上游 `docs/SELF_HOSTING.md`，两端要连同一个服务。
 
 Mac 端 CrossDesk 设置里的「连接断开后锁屏」默认开着（`config_center.h` 的 `lock_on_disconnect`）：最后一个控制端断开时 Mac 锁屏（`connection_runtime.cpp` 的 `HandleScreenLock`）。Snug 照常收尾，下次连上要先解锁。登录框在主屏上，手机上要在显示器菜单里切到主屏输入密码（未实测）。
 
