@@ -2,6 +2,7 @@
 // 只翻译在某块范围里按下的，每块要翻译手势的屏一块），再照它说的扣住、补发点击、右键或滚动（事件怎么读、怎么拼见 TouchEvents）。
 // 本机的触控板、鼠标一律不碰。
 // 跑在独立线程上：主线程会被建屏、搬窗口卡住，监听回调一慢，系统会让全机的鼠标跟着卡
+import AppKit
 import CoreGraphics
 import Foundation
 import os
@@ -46,7 +47,7 @@ public final class TouchTap {
     /// 起监听线程，等它报告监听建没建成。一家都不接管时不开（没有要收的事件）
     private func start() -> Bool {
         guard session == nil, !sources.isEmpty else { return true }
-        let next = TapSession(regions: regions, sources: sources, closeWindow: { [weak self] window in
+        let next = TapSession(regions: regions, sources: sources, separateSpaces: NSScreen.screensHaveSeparateSpaces, closeWindow: { [weak self] window in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.onCloseWindow?(window) } }
         }, tapped: { [weak self] point in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.onTap?(point) } }
@@ -71,6 +72,8 @@ public final class TouchTap {
 /// 一次监听：自己的线程、自己的 run loop、自己的状态机。除了 start / stop，其余都只在这个线程上跑
 private final class TapSession: @unchecked Sendable {
     private let regions: OSAllocatedUnfairLock<[TouchRegion]>
+    /// 系统设置里开着「显示器具有单独的空间」：核对关闭按钮时按屏筛窗口（WindowStack）。改了要注销才生效，开监听时在主线程读一次
+    private let separateSpaces: Bool
     private let closeWindow: @Sendable (UInt32) -> Void
     private let tapped: @Sendable (CGPoint) -> Void
     /// 监听线程的 run loop：start 等它建好才返回，之后只读
@@ -87,9 +90,10 @@ private final class TapSession: @unchecked Sendable {
     private var expireTimer: CFRunLoopTimer?
     private var injected: InjectedEvents
 
-    init(regions: OSAllocatedUnfairLock<[TouchRegion]>, sources: [TouchSource], closeWindow: @escaping @Sendable (UInt32) -> Void,
-         tapped: @escaping @Sendable (CGPoint) -> Void) {
+    init(regions: OSAllocatedUnfairLock<[TouchRegion]>, sources: [TouchSource], separateSpaces: Bool,
+         closeWindow: @escaping @Sendable (UInt32) -> Void, tapped: @escaping @Sendable (CGPoint) -> Void) {
         self.regions = regions
+        self.separateSpaces = separateSpaces
         injected = InjectedEvents(injectors: sources.map(\.injector))
         pipeline = TouchPipeline(shapers: sources.map { $0.makeShaper() })
         self.closeWindow = closeWindow
@@ -204,7 +208,8 @@ private final class TapSession: @unchecked Sendable {
             TouchEvents.post(TouchEvents.scroll(step))
         case .closeWindow(let point):
             // 按钮位置是铺好时读的：点下去这一刻再问一次窗口服务器（不经过 App，很快），对不上就照常点
-            if let button = region?.closeButton, button.isFrontmost(at: point, onScreen: Self.onScreen()) {
+            if let region, let button = region.closeButton, button.isFrontmost(at: point, onScreen: Self.onScreen(), screen: region.frame,
+                                                                                 separateSpaces: separateSpaces) {
                 closeWindow(button.window)
             } else {
                 Log.info("点在屏上那个窗口原来的关闭按钮处，但那里已经不是它的关闭按钮（挪走、被盖住或全屏了），照常点击")
@@ -221,15 +226,9 @@ private final class TapSession: @unchecked Sendable {
         if count != raw { event.setIntegerValueField(.mouseEventClickState, value: count) }
     }
 
-    /// 窗口服务器里此刻在屏上的窗口，从前到后
+    /// 窗口服务器里此刻在屏上的窗口，从前到后（不含指针，见 HitWindows）
     private static func onScreen() -> [(id: UInt32, frame: CGRect)] {
-        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
-        return (list ?? []).compactMap { info in
-            guard let id = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
-                  let bounds = info[kCGWindowBounds as String] as? NSDictionary,
-                  let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary) else { return nil }
-            return (id, frame)
-        }
+        HitWindows.frontToBack().map { ($0.id, $0.frame) }
     }
 
     /// 惯性：在监听线程的 run loop 上按 60fps 走，走完自己停

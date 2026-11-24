@@ -167,20 +167,16 @@ public final class WindowService: WindowControl {
     }
 
     /// 这一点上接点击的最上面的窗口是 Snug 自己的（小横条、资源库）：手机上点的是 Snug 的键，不是 App 的内容。
-    /// 问窗口服务器（从前到后），全局坐标左上原点；小横条贴着可见区底边，程序坞在这块屏上时不在屏的底边，不能按屏的范围算。
+    /// 问窗口服务器（从前到后，不含指针，见 HitWindows），全局坐标左上原点；小横条贴着可见区底边，程序坞在这块屏上时不在屏的底边，不能按屏的范围算。
     /// Snug 自己不接点击的窗口（截图的提示）跳过：点击穿过它落在下面的 App 上
+    /// screen：点落在的那块屏，一大半不在这块屏上的窗口坐标盖过来不算（WindowStack）
     @MainActor
-    public static func ownWindowFrontmost(at point: CGPoint) -> Bool {
+    public static func ownWindowFrontmost(at point: CGPoint, on screen: CGRect) -> Bool {
         let me = ProcessInfo.processInfo.processIdentifier
         let passThrough = Set(NSApp.windows.filter(\.ignoresMouseEvents).map(\.windowNumber))
-        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
-        let top = (list ?? []).first { info in
-            guard let bounds = info[kCGWindowBounds as String] as? NSDictionary,
-                  let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary), frame.contains(point) else { return false }
-            let own = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == me
-            return !(own && passThrough.contains((info[kCGWindowNumber as String] as? NSNumber)?.intValue ?? -1))
-        }
-        return (top?[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == me
+        let windows = HitWindows.frontToBack().filter { !($0.pid == me && passThrough.contains(Int($0.id))) }
+        return WindowStack.topmost(at: point, on: screen, in: windows, separateSpaces: NSScreen.screensHaveSeparateSpaces,
+                                   frame: \.frame)?.pid == me
     }
 
     /// 屏上普通窗口（第 0 层）此刻的位置，问窗口服务器

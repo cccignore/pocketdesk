@@ -43,9 +43,11 @@ public struct CloseButton: Equatable, Sendable {
         self.windowFrame = windowFrame
     }
 
-    /// 这一点上最上面的窗口还是它、而且还在读按钮时的位置。onScreen：窗口服务器给的屏上窗口，从前到后
-    public func isFrontmost(at point: CGPoint, onScreen: [(id: UInt32, frame: CGRect)]) -> Bool {
-        guard frame.contains(point), let top = onScreen.first(where: { $0.frame.contains(point) }) else { return false }
+    /// 这一点上最上面的窗口还是它、而且还在读按钮时的位置。onScreen：窗口服务器给的屏上窗口，从前到后；
+    /// screen：这块屏，一大半不在这块屏上的窗口坐标盖过来不算（WindowStack）
+    public func isFrontmost(at point: CGPoint, onScreen: [(id: UInt32, frame: CGRect)], screen: CGRect, separateSpaces: Bool) -> Bool {
+        guard frame.contains(point),
+              let top = WindowStack.topmost(at: point, on: screen, in: onScreen, separateSpaces: separateSpaces, frame: \.frame) else { return false }
         return top.id == window && top.frame.matches(windowFrame)
     }
 }

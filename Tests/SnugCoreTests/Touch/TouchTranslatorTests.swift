@@ -68,8 +68,9 @@ struct TouchTranslatorTests {
         #expect(t.handle(input(.release, 100, 300, 3.1), in: region).commands == [.replayPress, .replayCurrent])
     }
 
-    @Test("关闭按钮点下去时再核对：这一点最上面的还是那个窗口、还在原来的位置才算；被拖走、被盖住、进了全屏都不算")
+    @Test("关闭按钮点下去时再核对：这一点最上面的还是那个窗口、还在原来的位置才算；被拖走、被盖住、进了全屏都不算；大半在别的屏上的窗口坐标盖过来不算盖住")
     func closeButtonVerified() {
+        let screen = CGRect(x: 0, y: 0, width: 540, height: 950)
         let window = CGRect(x: 0, y: 22, width: 540, height: 900)
         let button = CloseButton(frame: CGRect(x: 8, y: 30, width: 14, height: 14), window: 7, windowFrame: window)
         let tap = CGPoint(x: 15, y: 37)
@@ -79,12 +80,16 @@ struct TouchTranslatorTests {
         let covered: Shown = [(9, CGRect(x: 0, y: 22, width: 540, height: 892)), (7, window)]   // 被别的窗口盖住
         let dragged: Shown = [(7, CGRect(x: 0, y: 200, width: 540, height: 900))]   // 被拖走了，那里是桌面
         let fullScreen: Shown = [(7, CGRect(x: 0, y: 0, width: 540, height: 950))]   // 进了全屏
-        #expect(button.isFrontmost(at: tap, onScreen: onTop))
-        #expect(button.isFrontmost(at: CGPoint(x: 15, y: 37.5), onScreen: rounded))
-        #expect(!button.isFrontmost(at: tap, onScreen: covered))
-        #expect(!button.isFrontmost(at: tap, onScreen: dragged))
-        #expect(!button.isFrontmost(at: tap, onScreen: fullScreen))
-        #expect(!button.isFrontmost(at: CGPoint(x: 100, y: 300), onScreen: onTop))   // 不在按钮上
+        let elsewhere: Shown = [(9, CGRect(x: -1480, y: 0, width: 1512, height: 948)), (7, window)]   // 大半在左边的屏上
+        #expect(button.isFrontmost(at: tap, onScreen: onTop, screen: screen, separateSpaces: true))
+        #expect(button.isFrontmost(at: CGPoint(x: 15, y: 37.5), onScreen: rounded, screen: screen, separateSpaces: true))
+        #expect(!button.isFrontmost(at: tap, onScreen: covered, screen: screen, separateSpaces: true))
+        #expect(!button.isFrontmost(at: tap, onScreen: dragged, screen: screen, separateSpaces: true))
+        #expect(!button.isFrontmost(at: tap, onScreen: fullScreen, screen: screen, separateSpaces: true))
+        #expect(!button.isFrontmost(at: CGPoint(x: 100, y: 300), onScreen: onTop, screen: screen, separateSpaces: true))   // 不在按钮上
+        #expect(button.isFrontmost(at: tap, onScreen: elsewhere, screen: screen, separateSpaces: true))
+        // 关掉了「显示器具有单独的空间」：跨过来的窗口真盖在按钮上，照常点击
+        #expect(!button.isFrontmost(at: tap, onScreen: elsewhere, screen: screen, separateSpaces: false))
     }
 
     @Test("快速滑动：开始滚动（began 再 changed），手指往下拖内容往下走，抬起发 ended")

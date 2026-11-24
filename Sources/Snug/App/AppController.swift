@@ -362,12 +362,12 @@ final class AppController: Sendable {
     /// 手机上点了一下屏上的窗口（点在小横条上不算，那是 Snug 自己的键）：等 App 处理完，读它聚焦在什么上，
     /// 键盘让位跟着走（Desk.followFocus）。只看声明了键盘高度、露着窗口的手机屏；读的是点那一下时屏上的窗口
     private func followFocus(at point: CGPoint) {
-        let hit = state.desks.desks.lazy.compactMap { id, desk -> (id: ScreenID, window: WindowKey)? in
+        let hit = state.desks.desks.lazy.compactMap { id, desk -> (id: ScreenID, window: WindowKey, screen: CGRect)? in
             guard desk.behavior.touch, desk.keyboardKeep != nil, !desk.listVisible, let placed = desk.placed,
                   let display = desk.display, CGDisplayBounds(display).contains(point) else { return nil }
-            return (id, placed.window.key)
+            return (id, placed.window.key, CGDisplayBounds(display))
         }.first
-        guard let hit, !WindowService.ownWindowFrontmost(at: point) else { return }
+        guard let hit, !WindowService.ownWindowFrontmost(at: point, on: hit.screen) else { return }
         Task { @MainActor [weak self, apps] in
             try? await Task.sleep(for: Self.focusSettle)
             let focus = await apps.inputFocus(pid: hit.window.pid)
