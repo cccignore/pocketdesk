@@ -276,6 +276,13 @@ public final class DeskSet {
         lane.run { await desk.setKeyboardRoom(!desk.state.keyboardRoom) }
     }
 
+    /// 手机上点完屏上的窗口一下，读到它的 App 聚焦在什么上（window：点那一下时屏上的窗口）：键盘让位跟着走（Desk.followFocus）。
+    /// 这块屏给不了让位（没声明键盘多高、露着资源库）时什么都不做
+    public func followFocus(_ focus: InputFocus?, in window: WindowKey, on id: ScreenID) {
+        guard let desk = desks[id], desk.offersKeyboardRoom || desk.state.keyboardRoom else { return }
+        lane.run { await desk.followFocus(focus, in: window) }
+    }
+
     /// 列表左上角的返回键：回到屏上的窗口。换档要一会儿，期间和放窗口一样显示「正在打开」、列表点不了
     public func returnToPlaced(on id: ScreenID) {
         guard let desk = desks[id], let placed = desk.state.placed else { return }

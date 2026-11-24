@@ -146,6 +146,7 @@ final class OneScreen {
     func dismissNotice() { desks.dismissNotice(on: id) }
     func showList() { desks.showList(on: id) }
     func toggleKeyboardRoom() { desks.toggleKeyboardRoom(on: id) }
+    func followFocus(_ focus: InputFocus?, in window: WindowKey) { desks.followFocus(focus, in: window, on: id) }
     func returnToPlaced() { desks.returnToPlaced(on: id) }
     func putBack() { desks.putBack(on: id) }
     func zoom(by delta: Int) { desks.zoom(by: delta, on: id) }

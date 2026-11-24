@@ -94,6 +94,18 @@ public final class AppService: AppControl {
         }
     }
 
+    /// 这个 App 此刻聚焦在什么上（InputFocus）：手机上点完一下读它，键盘让位跟着走。读不到（App 没响应、没有聚焦的元素）交回 nil。
+    /// Claude（Electron）不打开 AXManualAccessibility 也读得到输入框（11-24 实测），这里不去设它
+    public func inputFocus(pid: Int32) async -> InputFocus? {
+        await run {
+            guard let focused = AX.attribute(AX.application(pid), kAXFocusedUIElementAttribute),
+                  CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
+            let element = focused as! AXUIElement
+            return InputFocus.of(role: AX.string(element, kAXRoleAttribute), subrole: AX.string(element, kAXSubroleAttribute),
+                                 editable: AX.attribute(element, "AXEditableAncestor") != nil)
+        }
+    }
+
     public func quit(pid: Int32) async -> Bool {
         guard let app = NSRunningApplication(processIdentifier: pid) else { return true }
         guard app.terminate() else {

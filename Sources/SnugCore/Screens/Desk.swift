@@ -121,11 +121,14 @@ public final class Desk {
             state.placed = placement.map { Placed(window: $0.window, zoom: $0.record.zoom) }
             if placement?.window.key != oldValue?.window.key {
                 state.closeButton = nil
-                // 换了窗口、窗口放回去了：新的窗口铺满整屏
+                // 换了窗口、窗口放回去了：新的窗口铺满整屏，焦点从头认
                 state.keyboardRoom = false
+                follow = KeyboardFollow()
             }
         }
     }
+    /// 键盘让位跟着焦点走（followFocus）：换窗口、回资源库、换比例时从头认
+    private var follow = KeyboardFollow()
     /// 发过几个号、排着没做的号、正在做的事（见 Ticket）
     private var issued = 0
     private var queued: [(ticket: Ticket, work: Work)] = []
@@ -212,6 +215,7 @@ public final class Desk {
     func setNotice(_ notice: Notice?) { state.notice = notice }
     func showListNow() {
         state.listVisible = true
+        follow = KeyboardFollow()
         guard state.keyboardRoom else { return }
         // 回列表就不再让着键盘：换回让位前那一档，忘掉让位时铺完的样子，露出来时按整屏重新铺
         state.keyboardRoom = false
@@ -245,6 +249,17 @@ public final class Desk {
             return
         }
         placement = p
+    }
+
+    /// 手机上点完屏上的窗口一下，读到它聚焦在什么上（DeskSet.followFocus）：进了输入框自动让出键盘，
+    /// 从输入框出来落在内容上铺回整屏（KeyboardFollow）。读的是点那一下时屏上的窗口，现在换了、回了资源库就不算
+    func followFocus(_ focus: InputFocus?, in window: WindowKey) async {
+        guard placement?.window.key == window, !state.listVisible, let want = follow.observe(focus), want != state.keyboardRoom,
+              !want || offersKeyboardRoom else { return }
+        Log.info("\(placement?.window.label ?? "屏上的窗口") 点\(want ? "进了输入框" : "回了内容上")，跟着\(want ? "让出键盘" : "铺回整屏")")
+        await setKeyboardRoom(want)
+        // 没铺成（App 卡住）：下次点进输入框、点回内容上再试
+        if state.keyboardRoom != want { follow.missed(want) }
     }
 
     /// 屏幕模块里这块屏的状态变了。新屏从干净的提示开始：没屏时轮到的动作（比如盯着的退出排进队的放对话框）会留下提示
@@ -544,6 +559,7 @@ public final class Desk {
         p.settled = nil
         p.widthBeforeKeyboard = nil
         state.keyboardRoom = false
+        follow = KeyboardFollow()
         if !state.listVisible {
             Log.info("换了比例，\(p.window.label) 按新比例重新铺满")
             await fill(&p)

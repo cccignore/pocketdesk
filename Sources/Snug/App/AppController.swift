@@ -30,6 +30,8 @@ final class AppController: Sendable {
     let remotes = Remotes.all.map { $0.adapter.init() }
     private var session = RemoteSession()
     private let touch: TouchTap
+    /// 点完读焦点用（followFocus）
+    private let apps: AppService
     private var watcher: DisplayWatcher?
     private var tickTimer: Timer?
     private var lastTickAt: Date?
@@ -59,6 +61,7 @@ final class AppController: Sendable {
         let helper = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
         let windows = WindowService()
         let apps = AppService()
+        self.apps = apps
         desks = DeskSet(displays: VirtualDisplayService(helper: helper), windows: windows, apps: apps,
                         arrangement: DisplayArrangementService(), paths: paths, defaultZoom: store.config.zoomSteps)
         catalog = AppCatalog(apps: apps, windows: windows, excluding: Set(remotes.flatMap(\.identity.bundleIDs)))
@@ -109,6 +112,7 @@ final class AppController: Sendable {
         desks.onChange = { [weak self] desks in self?.desksChanged(desks) }
         desks.onGone = { [weak self] gone in self?.catalog.forget(gone) }
         touch.onCloseWindow = { [weak self] window in self?.desks.closePlaced(window: window) }
+        touch.onTap = { [weak self] point in self?.followFocus(at: point) }
         screenshots.onChange = { [weak self] overlay in self?.screenshotChanged(overlay) }
         desks.onTopologyChange = { [weak self] in
             guard let self else { return }
@@ -350,6 +354,26 @@ final class AppController: Sendable {
             Log.info("手势翻译范围：\(ids.isEmpty ? "没有屏" : names)\(why)")
         }
         state.update(\.gesturesFailed, !touch.setRegions(covered.map(\.region)))
+    }
+
+    /// 手机上点完一下多久再读焦点：等 App 处理完这一下（Claude 点进输入框后几十毫秒内焦点就到了，留足）
+    private static let focusSettle: Duration = .milliseconds(250)
+
+    /// 手机上点了一下屏上的窗口（点在小横条上不算，那是 Snug 自己的键）：等 App 处理完，读它聚焦在什么上，
+    /// 键盘让位跟着走（Desk.followFocus）。只看声明了键盘高度、露着窗口的手机屏；读的是点那一下时屏上的窗口
+    private func followFocus(at point: CGPoint) {
+        let hit = state.desks.desks.lazy.compactMap { id, desk -> (id: ScreenID, window: WindowKey)? in
+            guard desk.behavior.touch, desk.keyboardKeep != nil, !desk.listVisible, let placed = desk.placed,
+                  let display = desk.display, CGDisplayBounds(display).contains(point) else { return nil }
+            return (id, placed.window.key)
+        }.first
+        guard let hit, !WindowService.ownWindowFrontmost(at: point) else { return }
+        Task { @MainActor [weak self, apps] in
+            try? await Task.sleep(for: Self.focusSettle)
+            let focus = await apps.inputFocus(pid: hit.window.pid)
+            Log.debug("手机上点完一下，pid \(hit.window.pid) 聚焦在 \(focus.map { "\($0)" } ?? "读不到")")
+            self?.desks.followFocus(focus, in: hit.window, on: hit.id)
+        }
     }
 
     private func screenName(_ id: ScreenID) -> String {

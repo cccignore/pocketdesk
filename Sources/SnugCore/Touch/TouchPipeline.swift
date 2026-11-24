@@ -22,6 +22,12 @@ public struct TouchStep: Equatable, Sendable {
         self.passOriginal = passOriginal
         self.effects = effects
     }
+
+    /// 原事件交到了 App 手里：原样放行，或扣下后照原样补发。手机上点一下，抬起那一步是后者；
+    /// 点在关闭按钮上、按住松手当右键、惯性中点一下停住时，抬起被吞掉，不算
+    public var deliversCurrent: Bool {
+        passOriginal || effects.contains { if case .command(.replayCurrent, _) = $0 { true } else { false } }
+    }
 }
 
 public struct TouchPipeline: Sendable {

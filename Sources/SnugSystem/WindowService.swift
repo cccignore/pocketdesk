@@ -166,6 +166,23 @@ public final class WindowService: WindowControl {
         return Self.onScreenFrames().filter { $0.key.pid != me && area.contains(CGPoint(x: $0.value.midX, y: $0.value.midY)) }
     }
 
+    /// 这一点上接点击的最上面的窗口是 Snug 自己的（小横条、资源库）：手机上点的是 Snug 的键，不是 App 的内容。
+    /// 问窗口服务器（从前到后），全局坐标左上原点；小横条贴着可见区底边，程序坞在这块屏上时不在屏的底边，不能按屏的范围算。
+    /// Snug 自己不接点击的窗口（截图的提示）跳过：点击穿过它落在下面的 App 上
+    @MainActor
+    public static func ownWindowFrontmost(at point: CGPoint) -> Bool {
+        let me = ProcessInfo.processInfo.processIdentifier
+        let passThrough = Set(NSApp.windows.filter(\.ignoresMouseEvents).map(\.windowNumber))
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        let top = (list ?? []).first { info in
+            guard let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary), frame.contains(point) else { return false }
+            let own = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == me
+            return !(own && passThrough.contains((info[kCGWindowNumber as String] as? NSNumber)?.intValue ?? -1))
+        }
+        return (top?[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == me
+    }
+
     /// 屏上普通窗口（第 0 层）此刻的位置，问窗口服务器
     private static func onScreenFrames() -> [WindowKey: CGRect] {
         levelZeroWindows([.optionOnScreenOnly, .excludeDesktopElements]).mapValues(\.frame)

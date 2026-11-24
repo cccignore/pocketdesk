@@ -73,6 +73,29 @@ struct TouchPipelineTests {
         #expect(pipeline.handle(event(.leftUp, 2000, 300, 1.1), from: 0, regions: [phone]) == TouchStep(passOriginal: true, effects: [.dropHeld]))
     }
 
+    @Test("点一下：抬起那一步把原事件交给了 App（补发），按下那一步还扣着；点在关闭按钮上、按住松手当右键时抬起被吞掉，不算交出")
+    func deliversCurrent() {
+        var region = phone
+        region.closeButton = CloseButton(frame: CGRect(x: 8, y: 30, width: 14, height: 14), window: 7,
+                                         windowFrame: CGRect(x: 0, y: 22, width: 540, height: 900))
+        var pipeline = TouchPipeline(shapers: [DirectShaper()])
+        #expect(!pipeline.handle(event(.leftDown, 100, 300, 0), from: 0, regions: [region]).deliversCurrent)
+        #expect(pipeline.handle(event(.leftUp, 100, 300, 0.1), from: 0, regions: [region]).deliversCurrent)
+        // 手机屏外：原样放行
+        #expect(pipeline.handle(event(.leftDown, 2000, 300, 1), from: 0, regions: [region]).deliversCurrent)
+        #expect(pipeline.handle(event(.leftUp, 2000, 300, 1.1), from: 0, regions: [region]).deliversCurrent)
+        // 关闭按钮
+        _ = pipeline.handle(event(.leftDown, 15, 37, 2), from: 0, regions: [region])
+        let close = pipeline.handle(event(.leftUp, 15, 37, 2.1), from: 0, regions: [region])
+        #expect(close.effects.contains(.command(.closeWindow(at: CGPoint(x: 15, y: 37)), region: region)))
+        #expect(!close.deliversCurrent)
+        // 按住 0.6 秒松手：右键
+        _ = pipeline.handle(event(.leftDown, 100, 300, 3), from: 0, regions: [region])
+        let hold = pipeline.handle(event(.leftUp, 100, 300, 3.6), from: 0, regions: [region])
+        #expect(hold.effects.contains(.command(.rightClick(at: CGPoint(x: 100, y: 300)), region: region)))
+        #expect(!hold.deliversCurrent)
+    }
+
     @Test("拼出来的按下不扣原事件（没有能补发的按下）；不按键的移动在手机屏里吞掉，滑开就是滚动")
     func stitchedPressIsNotHeld() {
         var pipeline = TouchPipeline(shapers: [StitchingShaper()])

@@ -17,6 +17,9 @@ public final class TouchTap {
     private var sources: [TouchSource]
     /// 手机上点了屏上那个窗口的关闭按钮（核对过、点击已经吞掉了），交回窗口编号：在主线程上调
     public var onCloseWindow: ((UInt32) -> Void)?
+    /// 手机上点了一下（远控的左键抬起交到了 App 手里，见 TouchStep.deliversCurrent），交回点的位置（CGEvent 坐标）：在主线程上调。
+    /// 点完读焦点，键盘让位跟着走（AppController.followFocus）
+    public var onTap: ((CGPoint) -> Void)?
 
     public init(sources: [TouchSource]) {
         self.sources = sources
@@ -43,9 +46,11 @@ public final class TouchTap {
     /// 起监听线程，等它报告监听建没建成。一家都不接管时不开（没有要收的事件）
     private func start() -> Bool {
         guard session == nil, !sources.isEmpty else { return true }
-        let next = TapSession(regions: regions, sources: sources) { [weak self] window in
+        let next = TapSession(regions: regions, sources: sources, closeWindow: { [weak self] window in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.onCloseWindow?(window) } }
-        }
+        }, tapped: { [weak self] point in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.onTap?(point) } }
+        })
         guard next.start() else {
             Log.error("手势翻译开不起来：建事件监听失败（多半是没有辅助功能权限）")
             return false
@@ -67,6 +72,7 @@ public final class TouchTap {
 private final class TapSession: @unchecked Sendable {
     private let regions: OSAllocatedUnfairLock<[TouchRegion]>
     private let closeWindow: @Sendable (UInt32) -> Void
+    private let tapped: @Sendable (CGPoint) -> Void
     /// 监听线程的 run loop：start 等它建好才返回，之后只读
     private var runLoop: CFRunLoop?
 
@@ -81,11 +87,13 @@ private final class TapSession: @unchecked Sendable {
     private var expireTimer: CFRunLoopTimer?
     private var injected: InjectedEvents
 
-    init(regions: OSAllocatedUnfairLock<[TouchRegion]>, sources: [TouchSource], closeWindow: @escaping @Sendable (UInt32) -> Void) {
+    init(regions: OSAllocatedUnfairLock<[TouchRegion]>, sources: [TouchSource], closeWindow: @escaping @Sendable (UInt32) -> Void,
+         tapped: @escaping @Sendable (CGPoint) -> Void) {
         self.regions = regions
         injected = InjectedEvents(injectors: sources.map(\.injector))
         pipeline = TouchPipeline(shapers: sources.map { $0.makeShaper() })
         self.closeWindow = closeWindow
+        self.tapped = tapped
     }
 
     func start() -> Bool {
@@ -148,6 +156,7 @@ private final class TapSession: @unchecked Sendable {
         let pointer = PointerEvent(kind, at: event.location, time: ProcessInfo.processInfo.systemUptime)
         let step = pipeline.handle(pointer, from: source, regions: regions.withLock { $0 })
         apply(step, current: event)
+        if kind == .leftUp, step.deliversCurrent { tapped(event.location) }
         // 放行的左键事件（按住选择时的拖动、抬起，Snug 屏外的点击）也按这一串连击数（ClickChain.passing）：
         // 和补发的按下对得上，远控从 1 数起时这一串结束
         if step.passOriginal, kind != .move {
