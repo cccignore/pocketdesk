@@ -44,6 +44,13 @@ final class AppController: Sendable {
     private var installedRemotes: [String]?
     /// 远程期间换成的英文输入法，远程结束换回（只对注入文字会被中文输入法再组一次字的远控）
     private var inputSwap = InputSourceSwap()
+    /// 手机上打的字（远控注入的按键）：键盘让位跟着走（followTyping）
+    private let typing = InjectedTyping()
+    /// 打字后正在读的焦点：一次只读一个
+    private var typingFocusRead: Task<Void, Never>?
+    /// 上一次打字时没认的前台 App、读到的焦点：日志只记一次
+    private var typingIgnored: Int32?
+    private var typingFocusLogged: String?
     /// Snug 的屏每个编号这一次上线的时刻（墙钟，和远控进程的启动时刻比）：只在启动时读一次显示器的远控比它早启动就看不到这块屏。
     /// Snug 每次建屏编号都会变（真机实测 #13 → #14），新编号就是新上线
     private var snugDisplaysOnlineSince: [DisplayID: Date] = [:]
@@ -113,6 +120,7 @@ final class AppController: Sendable {
         desks.onGone = { [weak self] gone in self?.catalog.forget(gone) }
         touch.onCloseWindow = { [weak self] window in self?.desks.closePlaced(window: window) }
         touch.onTap = { [weak self] point in self?.followFocus(at: point) }
+        typing.onType = { [weak self] in self?.followTyping() }
         screenshots.onChange = { [weak self] overlay in self?.screenshotChanged(overlay) }
         desks.onTopologyChange = { [weak self] in
             guard let self else { return }
@@ -188,6 +196,17 @@ final class AppController: Sendable {
         state.update(\.connection, session.isConnected ? .connected : (session.inEpisode ? .reconnecting : .idle))
         state.update(\.controllers, session.controllers)
         state.update(\.remoteName, session.owner?.displayName)
+        state.update(\.keyboardHint, session.owner?.keyboardHint)
+        // 远控的手机键盘会盖住画面（它声明了键盘高度、手机屏也按它让位）才看手机上打的字：键盘让位跟着走
+        let watchesTyping = session.inEpisode && state.clientInsets.portraitKeyboard != nil && session.owner?.clientInsets.portraitKeyboard != nil
+        typing.watch(watchesTyping ? session.owner?.injector : nil)
+        if !watchesTyping, let read = typingFocusRead {
+            // 远程结束前打的字还在读焦点：读回来时屏上的事已经收尾，不再跟着让位
+            read.cancel()
+            typingFocusRead = nil
+        }
+        // 断开时远控的手机端收起键盘：打过字的记号不带到重连之后
+        if transitions.contains(.interrupted) { desks.forgetTyping() }
     }
 
     /// 远程开始（这一家注入的文字会被中文输入法再组一次字）时换成英文输入法，远程结束换回
@@ -373,6 +392,35 @@ final class AppController: Sendable {
             let focus = await apps.inputFocus(pid: hit.window.pid)
             Log.debug("手机上点完一下，pid \(hit.window.pid) 聚焦在 \(focus.map { "\($0)" } ?? "读不到")")
             self?.desks.followFocus(focus, in: hit.window, on: hit.id)
+        }
+    }
+
+    /// 手机上打了字（InjectedTyping，最多每 0.5 秒一次）：键盘开着。字进的是此刻在前台的 App，只看它的窗口放在哪块
+    /// 声明了键盘高度、露着窗口的手机屏上。那块屏正让着键盘就记下打过字；没让着就读焦点，在输入框里就让出键盘（Desk.followTyping）。
+    /// 读焦点一次只读一个，读着时再打的字不再读
+    private func followTyping() {
+        guard typingFocusRead == nil, let front = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
+        guard let hit = state.desks.typingTarget(frontmost: front, watched: state.watchedScreen) else {
+            // 同一个前台 App 只记一次：连着打字时每 0.5 秒来一下
+            if typingIgnored != front {
+                typingIgnored = front
+                Log.debug("手机上打了字，前台 App（pid \(front)）的窗口不在露着窗口、声明了键盘高度的手机屏上（或在两块屏上、不知道手机在看哪块），不管")
+            }
+            return
+        }
+        typingIgnored = nil
+        if hit.room { return desks.followTyping(nil, in: hit.window, on: hit.id) }
+        typingFocusRead = Task { @MainActor [weak self, apps] in
+            let focus = await apps.inputFocus(pid: hit.window.pid)
+            guard let self, !Task.isCancelled else { return }
+            typingFocusRead = nil
+            // 焦点不在输入框里打字（快捷键、网页正文）时每 0.5 秒来一下：同一个焦点只记一次
+            let read = "pid \(hit.window.pid) 聚焦在 \(focus.map { "\($0)" } ?? "读不到")"
+            if read != typingFocusLogged {
+                typingFocusLogged = read
+                Log.debug("手机上打了字，\(read)")
+            }
+            desks.followTyping(focus, in: hit.window, on: hit.id)
         }
     }
 

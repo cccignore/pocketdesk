@@ -127,8 +127,13 @@ public final class Desk {
             }
         }
     }
-    /// 键盘让位跟着焦点走（followFocus）：换窗口、回资源库、换比例时从头认
+    /// 键盘让位跟着焦点走（followFocus）：换窗口、回资源库、换比例、点空出来的那块铺回时从头认
     private var follow = KeyboardFollow()
+    /// 这一次让位后手机上打过字（followTyping）：手机键盘多半还开着，点回对话内容不铺回整屏，
+    /// 铺回去输入框就压在键盘底下了。每次让出、铺回都从头算
+    private var typedInRoom = false
+    /// 打字让位没铺成（App 卡住）后，这之前打字不再试：连着打字时每 0.5 秒来一下，不然每下都重铺、换档
+    private var typingRetryAt: TimeInterval = -.infinity
     /// 最近铺上过这块屏的窗口，新的在前：小横条上左右滑切回其中最近的另一个（DeskSet.switchBack）。
     /// 只记铺成了的（铺不上的、在问用户的对话框不记），关了的切的时候才发现、才忘掉
     private(set) var recent: [WindowInfo] = []
@@ -236,6 +241,7 @@ public final class Desk {
         guard on != state.keyboardRoom, !on || offersKeyboardRoom, let before = placement else { return }
         var p = before
         state.keyboardRoom = on
+        typedInRoom = false
         if on { p.widthBeforeKeyboard = p.width } else { p.leaveKeyboardRoom() }
         Log.info("\(p.window.label) \(on ? "让出键盘的位置，只铺到键盘上方" : "铺回整屏")")
         let filled = await fill(&p) != nil
@@ -260,11 +266,52 @@ public final class Desk {
     func followFocus(_ focus: InputFocus?, in window: WindowKey) async {
         guard placement?.window.key == window, !state.listVisible, let want = follow.observe(focus), want != state.keyboardRoom,
               !want || offersKeyboardRoom else { return }
+        if !want, typedInRoom {
+            return Log.info("\(placement?.window.label ?? "屏上的窗口") 点回了内容上，可让位后在手机上打过字，键盘多半还开着："
+                            + "不铺回整屏（键盘收起后点空出来的那块铺回）")
+        }
         Log.info("\(placement?.window.label ?? "屏上的窗口") 点\(want ? "进了输入框" : "回了内容上")，跟着\(want ? "让出键盘" : "铺回整屏")")
         await setKeyboardRoom(want)
         // 没铺成（App 卡住）：下次点进输入框、点回内容上再试
         if state.keyboardRoom != want { follow.missed(want) }
     }
+
+    /// 手机上打了字（远控注入的按键，DeskSet.followTyping）。让着键盘时记下打过字（键盘多半还开着，见 typedInRoom）；
+    /// 没让着、屏上窗口的 App 聚焦在输入框里（先开了键盘、输入框本来就有焦点）就让出键盘：字正打进被键盘盖住的输入框。
+    /// 手动铺回过也照样让：打字说明键盘开着。focus：打字时读到的焦点，让着键盘时不用读（nil）
+    func followTyping(_ focus: InputFocus?, in window: WindowKey) async {
+        guard placement?.window.key == window, !state.listVisible else { return }
+        if state.keyboardRoom {
+            if !typedInRoom { Log.info("\(placement?.window.label ?? "屏上的窗口") 让着键盘时在手机上打了字：键盘开着，点回内容不铺回整屏") }
+            typedInRoom = true
+            return
+        }
+        guard focus == .text, offersKeyboardRoom, timeline.now >= typingRetryAt else { return }
+        // 记下在输入框里：之后点回内容按「从输入框出来」算
+        _ = follow.observe(.text)
+        Log.info("\(placement?.window.label ?? "屏上的窗口") 在手机上往输入框里打字，跟着让出键盘")
+        await setKeyboardRoom(true)
+        if state.keyboardRoom {
+            typedInRoom = true
+        } else {
+            follow.missed(true)
+            typingRetryAt = timeline.now + Self.typingRetryDelay
+        }
+    }
+
+    /// 点了让位后空出来的那块（手机键盘收起了才点得到）：铺回整屏，焦点从头认，下次点进输入框、打字照样让
+    func leaveKeyboardRoom() async {
+        guard state.keyboardRoom else { return }
+        Log.info("\(placement?.window.label ?? "屏上的窗口") 点了让位后空出来的那块（手机键盘收起了）")
+        follow = KeyboardFollow()
+        await setKeyboardRoom(false)
+    }
+
+    static let typingRetryDelay: TimeInterval = 3
+
+    /// 远程断开、结束：打过字的记号不带过去（远控的手机端断线时收起键盘，下次连上时键盘是收着的）。
+    /// 设为主屏的那块窗口和让位都留着，点回内容照常铺回
+    func forgetTyping() { typedInRoom = false }
 
     /// 切回时能选的：最近铺上过这块屏、此刻不在这块屏上的，新的在前
     var switchCandidates: [WindowInfo] { recent.filter { $0.key != placedWindow } }

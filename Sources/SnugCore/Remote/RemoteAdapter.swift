@@ -18,9 +18,12 @@ public struct RemoteIdentity: Equatable, Sendable {
     public let clientInsets: ClientInsets
     /// 它把手机上打好的字当「按键 + 文字」注入：Mac 用中文输入法时会被再组一次字，远程期间换成英文输入法（见 InputSourceSwap）
     public let needsASCIIInputSource: Bool
+    /// 在手机上怎么打开它的键盘（一句话，让出键盘后空出来的那块上显示）：Mac 这边弹不出手机键盘，只能告诉用户去哪儿开。
+    /// 只对声明了键盘高度（clientInsets.portraitKeyboard）的有意义
+    public let keyboardHint: String?
 
     public init(logName: String, displayName: String, bundleIDs: Set<String>, injector: InjectedEventSource, readsDisplaysOnce: Bool = false,
-                clientInsets: ClientInsets = .standard, needsASCIIInputSource: Bool = false) {
+                clientInsets: ClientInsets = .standard, needsASCIIInputSource: Bool = false, keyboardHint: String? = nil) {
         self.logName = logName
         self.displayName = displayName
         self.bundleIDs = bundleIDs
@@ -28,6 +31,7 @@ public struct RemoteIdentity: Equatable, Sendable {
         self.readsDisplaysOnce = readsDisplaysOnce
         self.clientInsets = clientInsets
         self.needsASCIIInputSource = needsASCIIInputSource
+        self.keyboardHint = keyboardHint
     }
 }
 

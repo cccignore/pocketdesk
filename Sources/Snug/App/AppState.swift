@@ -24,6 +24,8 @@ final class AppState {
     var controllers: [String] = []
     /// 这次远程归哪家远控（界面上的名字）；不在远程时为 nil
     var remoteName: String?
+    /// 这家远控在手机上怎么打开键盘（RemoteIdentity.keyboardHint）：让位后空出来的那块上显示
+    var keyboardHint: String?
     /// 远控此刻在推的屏
     var streamedDisplay: DisplayID?
     /// 各块屏上的状态（DeskSet 写）
@@ -155,6 +157,8 @@ protocol TouchIntents: AnyObject, Sendable {
     func showList()
     /// 小横条上的键盘键：屏上的窗口让出手机键盘的位置 / 铺回整屏
     func toggleKeyboardRoom()
+    /// 点了让位后空出来的那块（手机键盘收起了才点得到）：铺回整屏
+    func leaveKeyboardRoom()
     /// 小横条上左右滑：切回这块屏上一个窗口
     func switchBack()
     func returnToPlaced()

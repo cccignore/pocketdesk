@@ -18,8 +18,10 @@ package enum CrossDeskRemote {
                                                    portraitKeyboard: 340)
 
     /// 交给核心的身份：界面和注入是同一个程序，按记号认注入的事件；它只在启动时读一次显示器（源码 screen_capturer_sck_impl.mm），屏要常驻；
-    /// 手机上打的字按键码 0 加文字注入（keyboard_capturer.cpp），Mac 的中文输入法会再组一次字，远程期间换英文输入法
+    /// 手机上打的字按键码 0 加文字注入（keyboard_capturer.cpp），Mac 的中文输入法会再组一次字，远程期间换英文输入法；
+    /// 手机键盘只能从右上角悬浮球的菜单打开（RemoteSessionView.swift 的 showKeyboard）
     package static let identity = RemoteIdentity(logName: "CrossDesk", displayName: "CrossDesk", bundleIDs: [bundleID],
                                                 injector: InjectedEventSource(marker: injectedMarker), readsDisplaysOnce: true,
-                                                clientInsets: clientInsets, needsASCIIInputSource: true)
+                                                clientInsets: clientInsets, needsASCIIInputSource: true,
+                                                keyboardHint: "点 CrossDesk 的悬浮球，选「键盘」")
 }

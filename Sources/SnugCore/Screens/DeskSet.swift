@@ -283,6 +283,24 @@ public final class DeskSet {
         lane.run { await desk.followFocus(focus, in: window) }
     }
 
+    /// 手机上打了字（远控注入的按键），focus：打字时屏上窗口（window）的 App 聚焦在什么上，这块屏正让着键盘时不用读（传 nil）。
+    /// 打字说明手机键盘开着：输入框被盖住就让出键盘，让着的不因点回内容铺回（Desk.followTyping）
+    public func followTyping(_ focus: InputFocus?, in window: WindowKey, on id: ScreenID) {
+        guard let desk = desks[id], desk.offersKeyboardRoom || desk.state.keyboardRoom else { return }
+        lane.run { await desk.followTyping(focus, in: window) }
+    }
+
+    /// 断开、进了重连等待（远控的手机端断线时收起键盘）：各块屏打过字的记号清掉，留着的让位点回内容照常铺回
+    public func forgetTyping() {
+        for desk in desks.values { desk.forgetTyping() }
+    }
+
+    /// 点了让位后空出来的那块：铺回整屏。只铺回、不来回切，连点两下不会又让出去（Desk.leaveKeyboardRoom）
+    public func leaveKeyboardRoom(on id: ScreenID) {
+        guard let desk = desks[id], desk.state.keyboardRoom else { return }
+        lane.run { await desk.leaveKeyboardRoom() }
+    }
+
     /// 小横条上左右滑：切回这块屏最近放过的另一个窗口（Desk.switchCandidates），和在资源库里点它一样，屏上这个放回原位。
     /// 跳过正在退出、正在关的，和正放在别的屏上的（别的设备正看着它，不抢过来）；关了的忘掉、接着往前找。一个都没有就什么都不做。
     /// 滑的这一下就挑好、排上号（屏上马上显示「正在打开」）；这块屏还在做上一个动作时这一下不算：
@@ -610,6 +628,7 @@ public final class DeskSet {
         for desk in orderedDesks {
             desk.setNotice(nil)
             desk.forgetRecent()
+            desk.forgetTyping()
             guard let wish = wishes.first(where: { $0.id == desk.id }), wish.resident, !wish.main,
                   screens.display(desk.id) != nil else { continue }
             let had = desk.state.placed != nil
@@ -698,5 +717,20 @@ public final class DeskSet {
     /// 按屏幕列表的顺序
     private var orderedDesks: [Desk] {
         wishes.compactMap { desks[$0.id] } + desks.values.filter { desk in !wishes.contains { $0.id == desk.id } }
+    }
+}
+
+extension DeskSet.State {
+    /// 手机上打的字落在哪块屏上（AppController.followTyping）：字进的是前台 App（frontmost），它的窗口放在声明了键盘高度、露着窗口的
+    /// 手机屏上。两块屏上放着同一个 App 的窗口时取手机在看的那块（watched）；不知道在看哪块（CrossDesk 报不了推流屏）就不认：
+    /// 读焦点只读得到 App 的，分不清是哪个窗口，认错屏会缩错窗口、把打过字记到别的屏上。room：那块屏正让着键盘
+    public func typingTarget(frontmost pid: Int32, watched: ScreenID?) -> (id: ScreenID, window: WindowKey, room: Bool)? {
+        let hits = desks.compactMap { id, desk -> (id: ScreenID, window: WindowKey, room: Bool)? in
+            guard desk.behavior.touch, desk.keyboardKeep != nil, !desk.listVisible, let placed = desk.placed,
+                  placed.window.key.pid == pid else { return nil }
+            return (id, placed.window.key, desk.keyboardRoom)
+        }
+        if hits.count == 1 { return hits[0] }
+        return hits.first { $0.id == watched }
     }
 }

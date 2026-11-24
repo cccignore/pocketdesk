@@ -1,6 +1,6 @@
 // 手机、平板屏上 Snug 自己的面板，每块屏一组（ScreenPanels 跟着屏幕列表建、拆；电脑屏没有面板，资源库从菜单栏打开）：
 // 盖满整块屏的 App 资源库，窗口放上来后底部的小横条；开着截图键时还有截图后浮在小横条上方的缩略图或提示，
-// 以及裁剪时盖满整块屏的裁剪界面。
+// 以及裁剪时盖满整块屏的裁剪界面；让出键盘时窗口底下空出来的那块（键盘托盘）。
 // 跟着这块屏的 Desk 状态走：屏在才建，列表该露就露、该收就收，屏幕一变（含换档）就重新摆位置。
 // 面板不抢焦点（点它不会激活 Snug），所有桌面都在，盖在这块屏的菜单栏之上；
 // 只在搜索、选型号时临时接收键盘，用完就还回去，手机上的键盘输入平时留给放上来的窗口
@@ -59,6 +59,9 @@ final class ScreenWindows {
     private var overlay: TouchPanel?
     private var overlayShown: OverlayShown?
     private var cropPanel: TouchPanel?
+    /// 让出键盘后窗口底下空出来的那块，和它此刻显示的提示、倍率
+    private var keyboardTray: TouchPanel?
+    private var keyboardTrayShown: TrayShown?
     private var screenObserver: (any NSObjectProtocol)?
     private var closed = false
 
@@ -95,6 +98,7 @@ final class ScreenWindows {
             _ = state.screenshotOverlay
             _ = state.screenshotScreen
             _ = state.config.screenshot
+            _ = state.keyboardHint
             _ = pages.active
         } onChange: { [weak self] in
             DispatchQueue.main.async {
@@ -149,7 +153,39 @@ final class ScreenWindows {
         if panel.placed != nil, !showList, !cropping { homeBar.orderFrontRegardless() } else { homeBar.orderOut(nil) }
         updateOverlay(on: screen, hidden: showList)
         updateCrop(on: screen)
+        updateKeyboardTray(on: screen, keep: !showList && !cropping && panel.keyboardRoom ? panel.keyboardKeep : nil)
     }
+
+    /// 键盘托盘：让着键盘时铺在窗口和小横条之间，盖住 Mac 的桌面。keep：窗口留屏幕上面的几成（ScreenFit.keyboardKeep），
+    /// 不让着键盘时为 nil，连面板一起拆掉。层级在普通窗口之下：窗口的最小高度放不下、伸到这块里时窗口照样露在上面；
+    /// 顶边往窗口底下多伸一截，窗口的圆角那里也不露桌面
+    private func updateKeyboardTray(on screen: NSScreen, keep: Double?) {
+        let frame = screen.frame
+        let bar = homeBarFrame(on: screen)
+        let scale = ScreenFit.scale(screen: frame.size)
+        // 和 Desk.fillArea 一样往下取整：窗口底边正好落在这条线上
+        let top = keep.map { frame.maxY - (frame.height * $0).rounded(.down) + Self.trayTuck * scale }
+        guard let top, top > bar.maxY else {
+            keyboardTray?.orderOut(nil)
+            keyboardTray = nil
+            keyboardTrayShown = nil
+            return
+        }
+        let panel = keyboardTray ?? TouchPanel(content: NSView(), level: NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue - 1))
+        keyboardTray = panel
+        let shown = TrayShown(hint: state.keyboardHint, scale: scale)
+        if shown != keyboardTrayShown {
+            keyboardTrayShown = shown
+            panel.contentView = FirstMouseHostingView(rootView: KeyboardTrayView(hint: shown.hint, scale: scale) { [weak self] in
+                self?.intents.leaveKeyboardRoom()
+            })
+        }
+        panel.setFrame(NSRect(x: frame.minX, y: bar.maxY, width: frame.width, height: top - bar.maxY), display: true)
+        panel.orderFrontRegardless()
+    }
+
+    /// 托盘顶边伸到窗口底下的高度（基准宽度下的点）：盖住窗口的圆角
+    private static let trayTuck: CGFloat = 16
 
     /// 截图后的浮层：缩略图靠左、正在相机键上方（点它进裁剪），提示居中（不拦点击）。
     /// 面板只有内容那么大，不挡窗口底部别的地方；回到 App 资源库、裁剪时不显示。
@@ -221,12 +257,15 @@ final class ScreenWindows {
         homeBar?.orderOut(nil)
         overlay?.orderOut(nil)
         cropPanel?.orderOut(nil)
+        keyboardTray?.orderOut(nil)
         list = nil
         homeBar = nil
         homeBarView = nil
         overlay = nil
         overlayShown = nil
         cropPanel = nil
+        keyboardTray = nil
+        keyboardTrayShown = nil
         display = nil
     }
 
@@ -242,14 +281,23 @@ final class ScreenWindows {
         let overlay: ScreenshotOverlay
         let scale: CGFloat
     }
+
+    /// 托盘上的提示和倍率：换了才重建视图
+    private struct TrayShown: Equatable {
+        let hint: String?
+        let scale: CGFloat
+    }
 }
 
-/// 不抢焦点、所有桌面都在、盖住菜单栏的面板。截图的浮层是圆角卡片，面板透明（opaque 传 false）
+/// 不抢焦点、所有桌面都在、盖住菜单栏的面板。截图的浮层是圆角卡片，面板透明（opaque 传 false）；
+/// 键盘托盘垫在窗口底下，层级另给
 final class TouchPanel: NSPanel {
-    init(content: NSView, opaque: Bool = true) {
+    /// 菜单栏是 24，菜单栏右边的图标是 25：再高一级才盖得住
+    static let aboveMenuBar = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+
+    init(content: NSView, opaque: Bool = true, level: NSWindow.Level = TouchPanel.aboveMenuBar) {
         super.init(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        // 菜单栏是 24，菜单栏右边的图标是 25：再高一级才盖得住
-        level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        self.level = level
         collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         hidesOnDeactivate = false
         isReleasedWhenClosed = false

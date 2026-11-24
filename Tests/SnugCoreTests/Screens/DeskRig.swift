@@ -147,6 +147,8 @@ final class OneScreen {
     func showList() { desks.showList(on: id) }
     func toggleKeyboardRoom() { desks.toggleKeyboardRoom(on: id) }
     func followFocus(_ focus: InputFocus?, in window: WindowKey) { desks.followFocus(focus, in: window, on: id) }
+    func followTyping(_ focus: InputFocus?, in window: WindowKey) { desks.followTyping(focus, in: window, on: id) }
+    func leaveKeyboardRoom() { desks.leaveKeyboardRoom(on: id) }
     func switchBack() { desks.switchBack(on: id) }
     func returnToPlaced() { desks.returnToPlaced(on: id) }
     func putBack() { desks.putBack(on: id) }

@@ -134,6 +134,155 @@ struct DeskFollowTests {
         #expect(!rig.desk.state.keyboardRoom)
     }
 
+    private func type(_ rig: Rig, _ focus: InputFocus?, in window: WindowInfo = ghostty) async {
+        rig.desk.followTyping(focus, in: window.key)
+        await rig.desk.idle()
+    }
+
+    private func leave(_ rig: Rig) async {
+        rig.desk.leaveKeyboardRoom()
+        await rig.desk.idle()
+    }
+
+    @Test("让着键盘时手机上打过字（键盘多半还开着）：点回对话内容不铺回，输入框不会压到键盘底下；点空出来的那块铺回")
+    func typingKeepsRoom() async throws {
+        let rig = try await keyboardRig()
+        await rig.pull(ghostty)
+        let full = try #require(rig.windows.window(ghostty.key)?.frame)
+        await follow(rig, .text)
+        await type(rig, nil)
+        await follow(rig, .content)
+        #expect(rig.desk.state.keyboardRoom)
+        await follow(rig, .text)
+        await follow(rig, .content)
+        #expect(rig.desk.state.keyboardRoom)
+        await leave(rig)
+        #expect(!rig.desk.state.keyboardRoom)
+        #expect(rig.windows.window(ghostty.key)?.frame == full)
+    }
+
+    @Test("先打开键盘、输入框本来就有焦点（没点它）：一打字就让出键盘；焦点不在输入框里打字（快捷键）不让")
+    func typingEntersRoom() async throws {
+        let rig = try await keyboardRig()
+        await rig.pull(ghostty)
+        await type(rig, .content)
+        await type(rig, .control)
+        await type(rig, nil)
+        #expect(!rig.desk.state.keyboardRoom)
+        await type(rig, .text)
+        #expect(rig.desk.state.keyboardRoom)
+        // 打字让出来的也算打过字：点回内容不铺回
+        await follow(rig, .content)
+        #expect(rig.desk.state.keyboardRoom)
+    }
+
+    @Test("手动铺回整屏后又在输入框里打字：打字说明键盘开着，照样让出键盘")
+    func typingAfterManualOff() async throws {
+        let rig = try await keyboardRig()
+        await rig.pull(ghostty)
+        await follow(rig, .text)
+        rig.desk.toggleKeyboardRoom()
+        await rig.desk.idle()
+        #expect(!rig.desk.state.keyboardRoom)
+        await type(rig, .text)
+        #expect(rig.desk.state.keyboardRoom)
+    }
+
+    @Test("点空出来的那块铺回整屏：连点两下也不会又让出去；之后点进输入框、打字都从头认，照样让")
+    func trayStartsFresh() async throws {
+        let rig = try await keyboardRig()
+        await rig.pull(ghostty)
+        await follow(rig, .text)
+        rig.desk.leaveKeyboardRoom()
+        rig.desk.leaveKeyboardRoom()
+        await rig.desk.idle()
+        #expect(!rig.desk.state.keyboardRoom)
+        await follow(rig, .text)
+        #expect(rig.desk.state.keyboardRoom)
+        await leave(rig)
+        await type(rig, .text)
+        #expect(rig.desk.state.keyboardRoom)
+    }
+
+    @Test("打过字只算这一次让位：铺回整屏后再点进输入框，没打字就点回内容照常铺回")
+    func typingCountsPerRoom() async throws {
+        let rig = try await keyboardRig()
+        await rig.pull(ghostty)
+        await follow(rig, .text)
+        await type(rig, nil)
+        await leave(rig)
+        #expect(!rig.desk.state.keyboardRoom)
+        await follow(rig, .text)
+        #expect(rig.desk.state.keyboardRoom)
+        await follow(rig, .content)
+        #expect(!rig.desk.state.keyboardRoom)
+    }
+
+    @Test("打字让位没铺成（App 卡住）：过一会儿打字再试，不是连着打字时每 0.5 秒重铺一次")
+    func typingRetriesFailedFill() async throws {
+        let rig = try await keyboardRig()
+        await rig.pull(ghostty)
+        rig.windows.blockMoves()
+        await type(rig, .text)
+        #expect(!rig.desk.state.keyboardRoom)
+        rig.windows.blockMoves(false)
+        await type(rig, .text)
+        #expect(!rig.desk.state.keyboardRoom)
+        rig.timeline.advance(Desk.typingRetryDelay)
+        await type(rig, .text)
+        #expect(rig.desk.state.keyboardRoom)
+    }
+
+    @Test("让着键盘时打的字进的是别的窗口（屏上换了窗口前读的）：不记到这块屏上，点回内容照常铺回")
+    func typingInRoomOtherWindow() async throws {
+        let rig = try await keyboardRig()
+        await rig.pull(ghostty)
+        await follow(rig, .text)
+        await type(rig, nil, in: finder)
+        await follow(rig, .content)
+        #expect(!rig.desk.state.keyboardRoom)
+    }
+
+    @Test("断开进了重连等待：手机键盘随断线收起，打过字的记号清掉，点回内容照常铺回")
+    func interruptionForgetsTyping() async throws {
+        let rig = try await keyboardRig()
+        await rig.pull(ghostty)
+        await follow(rig, .text)
+        await type(rig, nil)
+        rig.set.forgetTyping()
+        await follow(rig, .content)
+        #expect(!rig.desk.state.keyboardRoom)
+    }
+
+    @Test("远程结束：打过字的记号不带到下一次（下次连上时手机键盘是收着的），留着的让位点回内容照常铺回")
+    func sessionEndForgetsTyping() async throws {
+        let rig = try await keyboardRig()
+        await rig.pull(ghostty)
+        await follow(rig, .text)
+        await type(rig, nil)
+        rig.desk.setRemote(true)
+        rig.desk.setRemote(false)
+        await rig.desk.idle()
+        #expect(rig.desk.state.keyboardRoom)
+        await follow(rig, .content)
+        #expect(!rig.desk.state.keyboardRoom)
+    }
+
+    @Test("打字时屏上换了窗口、露着资源库、没在让位时点空白处：不管")
+    func typingIgnored() async throws {
+        let rig = try await keyboardRig()
+        await rig.pull(ghostty)
+        await type(rig, .text, in: finder)
+        #expect(!rig.desk.state.keyboardRoom)
+        rig.journal.clear()
+        await leave(rig)
+        #expect(rig.journal.all.isEmpty)
+        rig.desk.showList()
+        await rig.desk.idle()
+        await type(rig, .text)
+        #expect(!rig.desk.state.keyboardRoom)
+    }
+
     @Test("连滑两下（第一下还没切完）：第二下不算，不会切过去又切回来；第一下滑完马上显示正在打开")
     func doubleSwipe() async throws {
         let rig = try Rig()
