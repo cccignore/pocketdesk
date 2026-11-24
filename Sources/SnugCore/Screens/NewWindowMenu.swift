@@ -36,6 +36,8 @@ public enum NewWindowMenu {
             { isNewWindow($0.title) || $0.parent.map(isNewWindow) == true },
             // 「New Finder Window」
             { startsNew($0.title) && mentionsWindow($0.title) },
+            // Claude 的「在新窗口中新建会话」：⌘N 是在当前窗口新建会话（11-24 读菜单）
+            { $0.title.contains("新窗口") && $0.title.contains("新建") },
             // Cursor 的「Open Editor Window」⇧⌘N
             { mentionsWindow($0.title) && $0.key?.uppercased() == "N" },
             // 文本编辑的「New」：新建文稿就是开一个新窗口

@@ -39,6 +39,14 @@ struct NewWindowMenuTests {
         #expect(picked([item("New Agent", "N"), item("Open Editor Window", "N", 1), item("Switch Window…")]) == "Open Editor Window")
     }
 
+    @Test("Claude 的「在新窗口中新建会话」没有快捷键，⌘N 是在当前窗口新建会话（11-24 读菜单）；移到、打开到新窗口的不认")
+    func newConversationInNewWindow() {
+        let claude = [item("新建会话", "N"), item("在新窗口中新建会话"), item("新建侧边对话"),
+                      item("重新打开已关闭的会话", "T", 1), item("关闭会话", "W"), item("关闭窗口", "W", 1), item("全部关闭", "W", 1)]
+        #expect(picked(claude) == "在新窗口中新建会话")
+        #expect(picked([item("将标签页移到新窗口"), item("在新窗口中打开", "O", 4), item("合并所有窗口")]) == nil)
+    }
+
     @Test("文本编辑的「New」：新建文稿就是新窗口")
     func newDocument() {
         #expect(picked([item("Quit and Keep Windows", "Q", 2), item("New", "N")]) == "New")
