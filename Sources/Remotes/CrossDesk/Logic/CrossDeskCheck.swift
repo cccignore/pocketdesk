@@ -90,14 +90,14 @@ package enum CrossDeskCheck {
         switch s.sharing {
         case true?: Item(status: .ok, title: "共享桌面断言", detail: "此刻持有：有控制端连着")
         case false?: Item(status: .ok, title: "共享桌面断言", detail: "读得到，此刻没持有（没人在控制）")
-        case nil: Item(status: .fail, title: "共享桌面断言", detail: "读不到电源断言：Snug 判断有没有人在控制全靠它")
+        case nil: Item(status: .fail, title: "共享桌面断言", detail: "读不到电源断言：PocketDesk 判断有没有人在控制全靠它")
         }
     }
 
     private static func screens(_ f: Facts) -> Item {
-        let title = "看得到 Snug 的屏"
+        let title = "看得到 PocketDesk 的屏"
         guard !f.onlineSnugDisplays.isEmpty else {
-            return Item(status: .warn, title: title, detail: "此刻没有 Snug 的屏在线：用 CrossDesk 时屏要一直挂着，看设置里屏幕是否开着")
+            return Item(status: .warn, title: title, detail: "此刻没有 PocketDesk 的屏在线：用 CrossDesk 时屏要一直挂着，看设置里屏幕是否开着")
         }
         guard f.logReadable else {
             return Item(status: .warn, title: title, detail: "读不到 CrossDesk 的日志（\(CrossDeskLogRecord.path.path)），看不出它启动时读到了哪些显示器")
@@ -108,26 +108,26 @@ package enum CrossDeskCheck {
         guard missing.isEmpty else {
             let list = missing.map { "#\($0)" }.joined(separator: "、")
             return Item(status: .fail, title: title,
-                        detail: "CrossDesk 启动时登记了 \(f.enumerated.count) 块显示器，Snug 的屏 \(list) 没落在哪个空出的位置上："
+                        detail: "CrossDesk 启动时登记了 \(f.enumerated.count) 块显示器，PocketDesk 的屏 \(list) 没落在哪个空出的位置上："
                             + "它切不过去（它只在启动时读一次显示器），屏建好之后重启 CrossDesk")
         }
         let list = f.enumerated.map { "#\($0)" }.joined(separator: "、")
         guard unseen.isEmpty else {
             return Item(status: .ok, title: title,
-                        detail: "它启动时读到 \(list)；Snug 的屏 \(unseen) 是之后换了编号的，落在它登记的位置里，在它的显示器菜单里照样切得到")
+                        detail: "它启动时读到 \(list)；PocketDesk 的屏 \(unseen) 是之后换了编号的，落在它登记的位置里，在它的显示器菜单里照样切得到")
         }
-        return Item(status: .ok, title: title, detail: "它启动时读到 \(list)，在线的 Snug 屏都在里面")
+        return Item(status: .ok, title: title, detail: "它启动时读到 \(list)，在线的 PocketDesk 屏都在里面")
     }
 
     private static func detection(_ f: Facts) -> Item {
         let title = "连接检测"
         if f.sessionsInLog == 0 {
-            return Item(status: .info, title: title, detail: "这段时间 CrossDesk 没被控制过（Snug 察觉到 \(f.detectionsInSnugLog) 次）：用手机连一次再回看")
+            return Item(status: .info, title: title, detail: "这段时间 CrossDesk 没被控制过（PocketDesk 察觉到 \(f.detectionsInSnugLog) 次）：用手机连一次再回看")
         }
         if f.detectionsInSnugLog == 0 {
             return Item(status: .fail, title: title,
-                        detail: "CrossDesk 日志里有 \(f.sessionsInLog) 次远程，Snug 一次都没察觉：电源断言的名字可能改了")
+                        detail: "CrossDesk 日志里有 \(f.sessionsInLog) 次远程，PocketDesk 一次都没察觉：电源断言的名字可能改了")
         }
-        return Item(status: .ok, title: title, detail: "CrossDesk 日志里 \(f.sessionsInLog) 次远程，Snug 察觉到 \(f.detectionsInSnugLog) 次")
+        return Item(status: .ok, title: title, detail: "CrossDesk 日志里 \(f.sessionsInLog) 次远程，PocketDesk 察觉到 \(f.detectionsInSnugLog) 次")
     }
 }

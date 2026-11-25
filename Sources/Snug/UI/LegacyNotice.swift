@@ -13,7 +13,7 @@ struct LegacyNoticeView: View {
                 Image(systemName: "exclamationmark.triangle.fill").font(.title).foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 8) {
                     Text("旧版「UU远程伴侣」运行中").font(.title3.bold())
-                    Text("与 Snug 同时运行将相互干扰")
+                    Text("与 PocketDesk 同时运行将相互干扰")
                         .fixedSize(horizontal: false, vertical: true)
                     Text("退出后自动还原 · 可从「应用程序」移除")
                         .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -51,7 +51,7 @@ final class LegacyNoticeWindowController {
         let view = LegacyNoticeView(quitLegacy: { [weak self] in self?.decide?(true) },
                                     keepBoth: { [weak self] in self?.decide?(false) })
         let w = NSWindow(contentViewController: NSHostingController(rootView: view))
-        w.title = "Snug"
+        w.title = "PocketDesk"
         w.styleMask = [.titled]
         w.isReleasedWhenClosed = false
         w.center()

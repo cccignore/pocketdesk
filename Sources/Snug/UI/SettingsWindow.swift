@@ -100,7 +100,7 @@ enum MainScreenNotice {
 
         影响：当前主屏上的窗口随即移至此屏；此后程序坞、新窗口、系统提示与锁屏登录框均显示于此屏，本机不可见。适用于未接显示器或仅远程使用的 Mac。
 
-        原因：UU远程 在连接时选定主屏，Snug 仅能在连接后察觉，须预先设定。可随时在 App 资源库或菜单栏取消。
+        原因：UU远程 在连接时选定主屏，PocketDesk 仅能在连接后察觉，须预先设定。可随时在 App 资源库或菜单栏取消。
         """
 }
 
@@ -215,7 +215,7 @@ private struct Issue: Identifiable {
     static func all(_ state: AppState, _ intents: any AppIntents) -> [Issue] {
         var list: [Issue] = []
         if state.legacyAppRunning {
-            list.append(Issue(id: "legacy", text: StatusText(headline: "旧版「UU远程伴侣」运行中", detail: "与 Snug 同时运行将相互干扰"),
+            list.append(Issue(id: "legacy", text: StatusText(headline: "旧版「UU远程伴侣」运行中", detail: "与 PocketDesk 同时运行将相互干扰"),
                               action: .run("退出旧版", intents.quitLegacyApp)))
         }
         if let issue = state.loginItemIssue {
@@ -342,7 +342,7 @@ struct GeneralPage: View {
             } footer: {
                 HStack {
                     Spacer()
-                    Button("退出 Snug") { intents.quit() }
+                    Button("退出 PocketDesk") { intents.quit() }
                         .help("还原窗口后退出")
                 }
             }

@@ -211,6 +211,12 @@ struct ReleaseNoteTests {
         #expect(note.body.hasSuffix("感谢 @gaofeng21cn 定位这个问题（#2）。"))
     }
 
+    @Test("PocketDesk 的标签：第一行去掉「PocketDesk 版本：」当标题")
+    func fromPocketDeskTag() {
+        let note = ReleaseNote(version: Version(major: 3, minor: 0, patch: 0), date: "2026-11-25", tagMessage: "PocketDesk 3.0.0：改名 PocketDesk\n\n变化\n- 设置放进自己的目录")
+        #expect(note.title == "改名 PocketDesk")
+    }
+
     @Test("正文按行分成小标题、条目、段落：下一行是条目的那行算小标题")
     func blocks() {
         let note = ReleaseNote(version: Version(major: 2, minor: 0, patch: 1), date: "2026-11-14", tagMessage: message)

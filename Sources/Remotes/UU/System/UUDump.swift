@@ -56,7 +56,7 @@ package enum UUDump {
     /// 此刻在线的屏，一行一块
     static func displayLines() -> [String] {
         (Screens.online() ?? []).map { id in
-            let mine = CGDisplayVendorNumber(id) == ScreenSpec.vendorID ? "（Snug 的屏）" : ""
+            let mine = CGDisplayVendorNumber(id) == ScreenSpec.vendorID ? "（PocketDesk 的屏）" : ""
             return "  #\(id) \(Screens.name(of: id))\(mine) \(DisplayMode.describe(id))"
         }
     }

@@ -187,15 +187,15 @@ package enum UUCheck {
         let sessions = scope.snug.sessionStarts
         guard !starts.isEmpty else {
             return sessions.isEmpty
-                ? [Item(status: .warn, title: "推流日志", detail: "\(scope.window)没有远程，无从核对：用手机连一次（切到 Snug 的屏）再跑")]
+                ? [Item(status: .warn, title: "推流日志", detail: "\(scope.window)没有远程，无从核对：用手机连一次（切到 PocketDesk 的屏）再跑")]
                 : [Item(status: .fail, title: "推流日志",
-                        detail: "Snug 记到 \(sessions.count) 次远程，UU 日志里却没有一次可认的推流开始：写法可能变了，连接检测只剩提示窗口与控制端表格（原始日志见取证材料）")]
+                        detail: "PocketDesk 记到 \(sessions.count) 次远程，UU 日志里却没有一次可认的推流开始：写法可能变了，连接检测只剩提示窗口与控制端表格（原始日志见取证材料）")]
         }
         let matched = sessions.filter { s in starts.contains { abs($0.date.timeIntervalSince(s)) <= matchWindow } }.count
         let counts = "推流开始 \(starts.count) 次、停止 \(stops) 次"
         let log = matched < sessions.count
-            ? Item(status: .warn, title: "推流日志", detail: "\(counts)；Snug 记到的 \(sessions.count) 次远程里 \(matched) 次对得上推流开始")
-            : Item(status: .ok, title: "推流日志", detail: sessions.isEmpty ? counts : "\(counts)；Snug 记到的 \(sessions.count) 次远程都对得上")
+            ? Item(status: .warn, title: "推流日志", detail: "\(counts)；PocketDesk 记到的 \(sessions.count) 次远程里 \(matched) 次对得上推流开始")
+            : Item(status: .ok, title: "推流日志", detail: sessions.isEmpty ? counts : "\(counts)；PocketDesk 记到的 \(sessions.count) 次远程都对得上")
         return [log, streamedDisplays(starts.compactMap(\.display), snug: scope.snug.snugDisplays)]
     }
 
@@ -209,9 +209,9 @@ package enum UUCheck {
         let list = seen.map { "#\($0)" }.joined(separator: "、")
         let mine = seen.filter(snug.contains)
         guard !mine.isEmpty else {
-            return Item(status: .info, title: "推流屏", detail: "推过 \(list)；这段时间没推过 Snug 的屏，切屏能否认出待下次核对")
+            return Item(status: .info, title: "推流屏", detail: "推过 \(list)；这段时间没推过 PocketDesk 的屏，切屏能否认出待下次核对")
         }
-        return Item(status: .ok, title: "推流屏", detail: "推过 \(list)，其中 Snug 的屏 \(mine.map { "#\($0)" }.joined(separator: "、"))：切到 Snug 的屏认得出")
+        return Item(status: .ok, title: "推流屏", detail: "推过 \(list)，其中 PocketDesk 的屏 \(mine.map { "#\($0)" }.joined(separator: "、"))：切到 PocketDesk 的屏认得出")
     }
 
     /// Snug 连入时三路信号亮了哪几路。推流信号「未知」是 Snug 刚启动、日志监听还没回看完，不算 UU 的事。
@@ -223,7 +223,7 @@ package enum UUCheck {
         if all.isEmpty {
             guard sessions > 0 else { return nil }
             return Item(status: .warn, title: "连接检测",
-                        detail: "\(sessions) 次远程，Snug 日志里却没有一次「检测到 \(UURemote.identity.logName) 连入」：日志写法可能改了，无从核对")
+                        detail: "\(sessions) 次远程，PocketDesk 日志里却没有一次「检测到 \(UURemote.identity.logName) 连入」：日志写法可能改了，无从核对")
         }
         let unreadable = all.count - logged.count
         let known = logged.filter { $0.capture != nil }

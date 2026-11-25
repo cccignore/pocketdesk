@@ -33,7 +33,7 @@ private func snugLog(sessions: [Date] = [remoteStart], displays: [DisplayID] = [
     }
     return signals + sessions.map { logLine($0, SessionTransition.began(controllers: []).logLine) }
         + (controller.map { [logLine(remoteStart, SessionTransition.controllersChanged([$0]).logLine)] } ?? [])
-        + displays.map { logLine(remoteStart, "「Snug 手机屏」#\($0) 已建好（540 宽）") }
+        + displays.map { logLine(remoteStart, "「PocketDesk 手机屏」#\($0) 已建好（540 宽）") }
 }
 
 private func facts(version: String? = UUCheck.verifiedVersion, server: UUCheck.Server? = UUCheck.Server(pid: serverPID, start: nil), servers: [String] = ["Contents/Helpers/UURemoteServer"],
@@ -55,7 +55,7 @@ struct UUCheckTests {
         #expect(!items.contains { $0.status == .fail || $0.status == .warn })
         #expect(item("推流日志", in: items)?.detail.contains("推流开始 2 次") == true)
         #expect(item("推流屏", in: items)?.status == .ok)
-        #expect(item("推流屏", in: items)?.detail.contains("Snug 的屏 #79") == true)
+        #expect(item("推流屏", in: items)?.detail.contains("PocketDesk 的屏 #79") == true)
         #expect(UUCheck.report(items, hours: 4, at: remoteStart).contains("结论：未发现兼容问题"))
     }
 
@@ -132,7 +132,7 @@ struct UUCheckTests {
         let server = UUCheck.Server(pid: 200, start: restart)
         let items = UUCheck.evaluate(facts(server: server, capture: capture, snug: snugLog(sessions: [remoteStart, restart + 60])))
         #expect(items.first?.detail.hasSuffix("核对范围：UURemoteServer \(UUCheck.clock(restart)) 启动以来") == true)
-        #expect(item("推流日志", in: items)?.detail == "推流开始 1 次、停止 0 次；Snug 记到的 1 次远程都对得上")
+        #expect(item("推流日志", in: items)?.detail == "推流开始 1 次、停止 0 次；PocketDesk 记到的 1 次远程都对得上")
         // 新进程开推前没有屏描述：旧进程描述过的 79 不能带过来
         #expect(item("推流屏", in: items)?.status == .fail)
         // 新进程启动以来还没远程过：无从核对，不拿旧进程的记录凑

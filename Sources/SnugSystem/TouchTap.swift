@@ -108,7 +108,7 @@ private final class TapSession: @unchecked Sendable {
             ready.signal()
             if ok { CFRunLoopRun() }
         }
-        thread.name = "com.zephyr4123.snug.touch"
+        thread.name = "com.cccignore.pocketdesk.touch"
         thread.qualityOfService = .userInteractive
         thread.start()
         // 建监听是同步的、很快，不设超时：设了超时反而会在超时后留下一个关不掉的监听。

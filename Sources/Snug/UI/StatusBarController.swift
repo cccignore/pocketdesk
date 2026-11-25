@@ -26,14 +26,14 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     /// 菜单栏图标：SF Symbols，同原型（系统图标本身就是模板图，深色菜单栏自动反白）
-    private static let icon: NSImage? = NSImage(systemSymbolName: "iphone.radiowaves.left.and.right", accessibilityDescription: "Snug")?
+    private static let icon: NSImage? = NSImage(systemSymbolName: "iphone.radiowaves.left.and.right", accessibilityDescription: "PocketDesk")?
         .withSymbolConfiguration(.init(pointSize: 14, weight: .medium))
 
     /// 屏都关着、没有权限时图标变灰；提示文字随状态变
     private func refreshButton() {
         withObservationTracking {
             item.button?.appearsDisabled = !state.config.screens.contains(where: \.enabled) || !state.accessibilityTrusted
-            item.button?.toolTip = "Snug：\(StatusText(state).headline)"
+            item.button?.toolTip = "PocketDesk：\(StatusText(state).headline)"
         } onChange: { [weak self] in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.refreshButton() } }
         }
@@ -49,7 +49,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         if state.connection == .idle, !state.staleRemotes.isEmpty {
             let names = state.staleRemotes.joined(separator: "、")
             let restart = action("重启 \(names)", #selector(restartStale), symbol: "arrow.clockwise")
-            restart.toolTip = "\(names) 比 Snug 的屏先启动，看不到这些屏；重启后它重新读显示器"
+            restart.toolTip = "\(names) 比 PocketDesk 的屏先启动，看不到这些屏；重启后它重新读显示器"
             menu.addItem(restart)
         }
         // 主屏常驻、本机看不到时，菜单栏是回到 Mac 前最好找的出口
@@ -64,9 +64,9 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         // 有新版本：系统的菜单角标，更新在设置的通用页里
         if state.update.hasNewVersion { settings.badge = NSMenuItemBadge(string: "新版本") }
         menu.addItem(settings)
-        menu.addItem(action("关于 Snug", #selector(openAbout), symbol: "info.circle"))
+        menu.addItem(action("关于 PocketDesk", #selector(openAbout), symbol: "info.circle"))
         menu.addItem(.separator())
-        menu.addItem(action("退出 Snug", #selector(quit), key: "q", symbol: "power"))
+        menu.addItem(action("退出 PocketDesk", #selector(quit), key: "q", symbol: "power"))
     }
 
     /// 最上面一行：状态图标块 + 此刻的状态和一行说明。只看不点，所以用自定义视图（不会高亮）

@@ -51,7 +51,7 @@ enum UpdateProblem: Error, Equatable {
         case .unreachable(let source): "无法从\(source.title)获取更新"
         case .corrupt: "下载内容校验失败"
         case .tooOld: "新版本需手动下载"
-        case .cannotReplace: "无法替换当前位置的 Snug"
+        case .cannotReplace: "无法替换当前位置的 PocketDesk"
         case .signature: "新版本签名不符"
         case .failed: "更新失败"
         }

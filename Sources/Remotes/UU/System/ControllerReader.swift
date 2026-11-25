@@ -18,7 +18,7 @@ final class ControllerReader {
         var generation = 0
     }
 
-    private let queue = DispatchQueue(label: "com.zephyr4123.snug.ax-reader", qos: .utility)
+    private let queue = DispatchQueue(label: "com.cccignore.pocketdesk.ax-reader", qos: .utility)
     private let box = OSAllocatedUnfairLock(initialState: Box())
 
     /// 每拍调用：返回此刻可信的控制端表格，没有读取在跑就发起下一次

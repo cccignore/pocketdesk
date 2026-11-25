@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Snug 的开发与发版命令。出包相关的事都从这一个入口走，不另外散脚本：
+# PocketDesk 的开发与发版命令（基于 Snug 的那一套）。出包相关的事都从这一个入口走，不另外散脚本：
 #   scripts/snug help
 #
 # 版本号只从仓库根目录的 VERSION 读。本机才有的东西（签名证书、公证档案、发版用的 GitHub 账号、
@@ -12,13 +12,15 @@
 set -euo pipefail
 cd "${0:A:h}/.."
 
-readonly BUNDLE_ID="com.zephyr4123.snug"
-readonly APP="build/Snug.app"
-readonly REPO_URL="https://github.com/zephyr4123/snug"
+# App 的名字：包名、可执行文件、dmg 和更新包的文件名都用它。bundle id 和 Snug 的不同，同一台 Mac 上两个都装着也认得开
+readonly NAME="PocketDesk"
+readonly BUNDLE_ID="com.cccignore.pocketdesk"
+readonly APP="build/$NAME.app"
+readonly REPO_URL="https://github.com/cccignore/pocketdesk"
 # gh 的 release 命令都发到这个仓库。不写明时 gh 自己从 git 远端里挑，有 upstream 就挑 upstream：
 # 2.0.0 发版时它挑中了原作者的 aoyamashou/UUyc-companion，靠 --verify-tag 才没发过去
 export GH_REPO="${REPO_URL#https://github.com/}"
-# 国内源：桶和 SpeakMore 共用，Snug 的都在 snug/ 下，网址的路径就是桶里的对象名（摆法见「国内源」一节）
+# 国内源（Snug 时期的腾讯云 COS + CDN）：PocketDesk 不发国内源，ship 不再传；mirror、media 两个命令留着，没配 COS 时照常报错退出
 readonly COS_PREFIX="snug"
 readonly DOWNLOAD_BASE="https://dl.zephyrxiang.com/$COS_PREFIX"
 # 通用二进制：Apple 芯片和 Intel 一个包。install 也打同样的，自己测的就是要发的
@@ -35,12 +37,13 @@ usage() {
 用法：scripts/snug <命令>
 
   check     先查远控适配层的边界，再构建全部产物、跑全部测试（门禁）
-  app       打 build/Snug.app 并签名：有 Developer ID 证书就用它，没有就 ad-hoc
-  install   打 App，装进「应用程序」并打开（先正常退出正在跑的 Snug，窗口会先放回原处）
-  dist      打可分发的安装包 dist/<版本>/Snug-<版本>.dmg：Developer ID 签名，App 和 dmg 各自公证、钉票据；
-            再把公证过的 App 打成应用内更新用的 Snug-<版本>.pack
+  app       打 build/PocketDesk.app 并签名：有 Developer ID 证书就用它，没有就 ad-hoc
+  install   打 App，装进「应用程序」并打开（先正常退出正在跑的 PocketDesk，窗口会先放回原处）
+  dist      打可分发的安装包 dist/<版本>/PocketDesk-<版本>.dmg：Developer ID 签名，App 和 dmg 各自公证、钉票据；
+            再把公证过的 App 打成应用内更新用的 PocketDesk-<版本>.pack。
+            没有 Developer ID 时在 .machine.env 写 DIST_ADHOC=1：ad-hoc 签名、不公证（用户第一次打开要在系统设置里点「仍要打开」）
   ship      发版：把关 → check → dist → 写 update.json（更新日志取自标签说明）→ GitHub Release 草稿、传包 →
-            公开 → 传国内源 → 两边都从下载地址核对
+            公开 → 从下载地址核对
   mirror    把 GitHub 上已经公开的版本补传到国内源：scripts/snug mirror 2.0.0
   media     把 README 用的图片、视频传到国内源，打出地址：scripts/snug media <文件…>
   stats     安装包下载量（只读）：GitHub Release 加国内源，扣除自测；国内源的日志读 SpeakMore 的缓存
@@ -164,7 +167,15 @@ notarize() {
   die "${file:t} 没过公证：$verdict（编号 $id）"
 }
 
+# DIST_ADHOC=1（.machine.env）：没有 Developer ID 也打可分发的包，ad-hoc 签名、不公证
+adhoc_dist() { [[ ${DIST_ADHOC:-0} == 1 ]]; }
+
 require_distribution_setup() {
+  if adhoc_dist; then
+    (( DEVELOPER_ID )) && die "DIST_ADHOC=1 却找到了 Developer ID 证书：有证书就该签名、公证，把 DIST_ADHOC 去掉"
+    warn "DIST_ADHOC=1：ad-hoc 签名、不公证。下载的人第一次打开会被 Gatekeeper 拦下，要在「系统设置 → 隐私与安全性」里点「仍要打开」；应用内更新核不过签名，只会提示去下载页"
+    return 0
+  fi
   (( DEVELOPER_ID )) || die "可分发的包要用 Developer ID Application 证书签名，钥匙串里没有（或 MAC_SIGNING_IDENTITY 指的不是）"
   [[ -n ${MAC_NOTARY_PROFILE:-} ]] || die "没配公证档案。先把 App Store Connect 的 API key 存进钥匙串，再把档案名写进 .machine.env：
     xcrun notarytool store-credentials <档案名> --key AuthKey_<Key ID>.p8 --key-id <Key ID> --issuer <Issuer ID>
@@ -186,9 +197,9 @@ write_info_plist() {
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
-  <key>CFBundleName</key><string>Snug</string>
-  <key>CFBundleDisplayName</key><string>Snug</string>
-  <key>CFBundleExecutable</key><string>Snug</string>
+  <key>CFBundleName</key><string>${NAME}</string>
+  <key>CFBundleDisplayName</key><string>${NAME}</string>
+  <key>CFBundleExecutable</key><string>${NAME}</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${version}</string>
@@ -213,7 +224,8 @@ build_app() {
   step "组装 $APP（版本 $version）"
   rm -rf "$APP"
   mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-  cp "$bin/Snug" "$APP/Contents/MacOS/Snug"
+  # 编出来的可执行文件还叫 Snug（Swift 的 product 名不改），放进包里叫 PocketDesk
+  cp "$bin/Snug" "$APP/Contents/MacOS/$NAME"
   # PermissionFlow 的资源包（本地化文案等），它在 Contents/Resources 里找
   cp -R "$bin/PermissionFlow_PermissionFlow.bundle" "$APP/Contents/Resources/"
   # App 图标；界面里的其它图标都是 SF Symbols
@@ -230,10 +242,10 @@ build_app() {
 # App 装进 dmg：打开后左边是 Snug，右边是「应用程序」的替身，拖过去就装好
 make_dmg() {
   local dmg=$1 stage; stage="$(mktemp -d)"
-  ditto "$APP" "$stage/Snug.app"
+  ditto "$APP" "$stage/$NAME.app"
   ln -s /Applications "$stage/Applications"
   # ULMO（LZMA）比默认的 UDZO 小，macOS 10.15 起都打得开
-  hdiutil create -quiet -volname Snug -srcfolder "$stage" -format ULMO -ov "$dmg"
+  hdiutil create -quiet -volname "$NAME" -srcfolder "$stage" -format ULMO -ov "$dmg"
   rm -rf "$stage"
 }
 
@@ -371,16 +383,16 @@ verify_download() {
 
 # <目录> 里的 Snug-<版本>.dmg 和 .sha256 传到国内源、从下载地址核对，再把「最新版」地址换成它
 publish_cos() {
-  local version=$1 dir=$2 name="Snug-$1.dmg"
+  local version=$1 dir=$2 name="$NAME-$1.dmg"
   local sum; sum="$(cut -d ' ' -f 1 < "$dir/$name.sha256")"
   step "传到国内源 $DOWNLOAD_BASE/v$version/"
   cos put "$dir/$name" "$COS_PREFIX/v$version/$name" "$IMMUTABLE"
   cos put "$dir/$name.sha256" "$COS_PREFIX/v$version/$name.sha256" "$IMMUTABLE"
   verify_download "$DOWNLOAD_BASE/v$version/$name" "$sum"
   step "国内源的最新版地址"
-  cos alias "$dir/$name" "$COS_PREFIX/latest/Snug.dmg" "public, max-age=300" "$version" "$name"
+  cos alias "$dir/$name" "$COS_PREFIX/latest/$NAME.dmg" "public, max-age=300" "$version" "$name"
   # 这个地址会换内容，CDN 节点上可能还留着 5 分钟以内的旧包：上面已经回读源站核对过，这里不从 CDN 核对
-  print -- "最新版地址：$DOWNLOAD_BASE/latest/Snug.dmg（CDN 节点最多 5 分钟后换上）"
+  print -- "最新版地址：$DOWNLOAD_BASE/latest/$NAME.dmg（CDN 节点最多 5 分钟后换上）"
 }
 
 # <目录> 里应用内更新用的 Snug-<版本>.pack 和 update.json 传到国内源、从下载地址核对，再把 latest/update.json 换成它。
@@ -388,7 +400,7 @@ publish_cos() {
 publish_cos_update() {
   local version=$1 dir=$2 name
   step "传应用内更新到国内源"
-  for name in "Snug-$version.pack" update.json; do
+  for name in "$NAME-$version.pack" update.json; do
     cos put "$dir/$name" "$COS_PREFIX/v$version/$name" "$IMMUTABLE"
     verify_download "$DOWNLOAD_BASE/v$version/$name" "$(shasum -a 256 "$dir/$name" | cut -d ' ' -f 1)"
   done
@@ -506,16 +518,16 @@ cmd_app() {
 cmd_install() {
   resolve_identity
   build_app
-  local target="/Applications/Snug.app"
-  local pids=(${(f)"$(pgrep -f "^$target/Contents/MacOS/Snug" || true)"})
+  local target="/Applications/$NAME.app"
+  local pids=(${(f)"$(pgrep -f "^$target/Contents/MacOS/$NAME" || true)"})
   if (( ${#pids} )); then
     # SIGTERM 走 Snug 自己的退出收尾：窗口放回原处、撤掉手机屏，再退出
-    step "退出正在跑的 Snug（pid ${pids[*]}）"
+    step "退出正在跑的 $NAME（pid ${pids[*]}）"
     kill -TERM "${pids[@]}"
     # 最多等 20 秒：要长过 Snug 的退出收尾上限（QuitFlow.userQuitTimeout，15 秒），不然它还在放回窗口就被判成没退出
     local waited=0
     while kill -0 "${pids[@]}" 2>/dev/null; do
-      (( waited < 40 )) || die "Snug 20 秒内没退出，没有替换"
+      (( waited < 40 )) || die "$NAME 20 秒内没退出，没有替换"
       sleep 0.5; (( waited += 1 ))
     done
   fi
@@ -532,49 +544,57 @@ cmd_dist() {
   require_distribution_setup
   keep_awake
   local version; version="$(read_version)"
-  local out="dist/$version" dmg="dist/$version/Snug-$version.dmg"
+  local out="dist/$version" dmg="dist/$version/$NAME-$version.dmg"
   local commit; commit="$(git rev-parse HEAD)"
   [[ -z "$(git status --porcelain)" ]] || { commit="$commit-dirty"; warn "工作区有没提交的改动：这个包只能自己用，ship 不会用它"; }
   rm -rf "$out"
   mkdir -p "$out"
 
   build_app
-  verify_distribution_signature "$APP"
-  step "公证 App"
-  local zip="$out/Snug-$version-notarize.zip"
-  ditto -c -k --keepParent "$APP" "$zip"
-  notarize "$zip"
-  rm -f "$zip"
-  xcrun stapler staple -q "$APP"
-  xcrun stapler validate -q "$APP"
-  spctl --assess --type execute "$APP" || die "Gatekeeper 不认 $APP"
+  if adhoc_dist; then
+    codesign --verify --strict --deep "$APP" || die "签名校验没过：$APP"
+  else
+    verify_distribution_signature "$APP"
+    step "公证 App"
+    local zip="$out/$NAME-$version-notarize.zip"
+    ditto -c -k --keepParent "$APP" "$zip"
+    notarize "$zip"
+    rm -f "$zip"
+    xcrun stapler staple -q "$APP"
+    xcrun stapler validate -q "$APP"
+    spctl --assess --type execute "$APP" || die "Gatekeeper 不认 $APP"
+  fi
 
   step "应用内更新包"
   release_tool pack "$APP" "$version" "$out"
 
   step "打 dmg"
   make_dmg "$dmg"
-  sign "$dmg"
-  verify_distribution_signature "$dmg"
-  step "公证 dmg"
-  notarize "$dmg"
-  xcrun stapler staple -q "$dmg"
-  xcrun stapler validate -q "$dmg"
-  # 双击打开 dmg 时系统做的就是这一项检查
-  spctl --assess --type open --context context:primary-signature "$dmg" || die "Gatekeeper 不认 $dmg"
+  if adhoc_dist; then
+    codesign --verify "$dmg" 2>/dev/null || sign "$dmg"
+  else
+    sign "$dmg"
+    verify_distribution_signature "$dmg"
+    step "公证 dmg"
+    notarize "$dmg"
+    xcrun stapler staple -q "$dmg"
+    xcrun stapler validate -q "$dmg"
+    # 双击打开 dmg 时系统做的就是这一项检查
+    spctl --assess --type open --context context:primary-signature "$dmg" || die "Gatekeeper 不认 $dmg"
+  fi
 
   (cd "$out" && shasum -a 256 "${dmg:t}" > "${dmg:t}.sha256")
   print -- "$commit" > "$out/BUILT_FROM"
-  print -- "✅ $dmg（$(describe_identity)，已公证）"
+  print -- "✅ $dmg（$(describe_identity)，$(adhoc_dist && print 未公证 || print 已公证)）"
 }
 
 # 本地的包能不能直接拿去发：出自 HEAD、工作区当时干净、校验值对得上
 dist_is_current() {
   local version=$1 out="dist/$1"
-  [[ -f $out/BUILT_FROM && -f $out/Snug-$version.dmg && -f $out/Snug-$version.dmg.sha256 ]] || return 1
-  [[ -f $out/Snug-$version.pack && -f $out/update-package.json ]] || return 1
+  [[ -f $out/BUILT_FROM && -f $out/$NAME-$version.dmg && -f $out/$NAME-$version.dmg.sha256 ]] || return 1
+  [[ -f $out/$NAME-$version.pack && -f $out/update-package.json ]] || return 1
   [[ "$(cat "$out/BUILT_FROM")" == "$(git rev-parse HEAD)" ]] || return 1
-  (cd "$out" && shasum -a 256 -c -s "Snug-$version.dmg.sha256")
+  (cd "$out" && shasum -a 256 -c -s "$NAME-$version.dmg.sha256")
 }
 
 check_github_account() {
@@ -587,17 +607,17 @@ check_github_account() {
 
 cmd_ship() {
   local version; version="$(read_version)"
-  local tag="v$version" dmg_name="Snug-$version.dmg"
+  local tag="v$version" dmg_name="$NAME-$version.dmg"
 
   step "把关"
   [[ -z "$(git status --porcelain)" ]] || die "工作区有没提交的改动：发出去的会和标签对不上"
   # grep 不用 -q：提前退出会让前面的 git 吃 SIGPIPE，pipefail 下误判成失败
   git tag --points-at HEAD | grep -x "$tag" >/dev/null || die "HEAD 上没有标签 $tag（VERSION 里是 $version）"
   [[ "$(git cat-file -t "$tag")" == "tag" ]] || die "$tag 是轻量标签：Release 的说明取自标签说明，请用 git tag -a 重打"
-  local remote; remote="$(git ls-remote origin "refs/tags/$tag^{}" | cut -f 1)"
+  # 照 REPO_URL 核对，不看 origin：这份仓库的 origin 是上游 Snug
+  local remote; remote="$(git ls-remote "$REPO_URL" "refs/tags/$tag^{}" | cut -f 1)"
   [[ $remote == "$(git rev-parse HEAD)" ]] || die "标签 $tag 还没推到 GitHub，或者那边指的不是这个提交"
   check_github_account
-  require_cos_setup
 
   # 已经公开的版本不改；草稿可以接着传
   local state=""
@@ -613,7 +633,7 @@ cmd_ship() {
   local dmg="dist/$version/$dmg_name"
   step "update.json"
   release_tool feed "$version" "dist/$version"
-  local assets=("$dmg" "$dmg.sha256" "dist/$version/Snug-$version.pack" "dist/$version/update.json")
+  local assets=("$dmg" "$dmg.sha256" "dist/$version/$NAME-$version.pack" "dist/$version/update.json")
 
   case $state in
     published)
@@ -623,7 +643,7 @@ cmd_ship() {
       gh release upload "$tag" "${assets[@]}" --clobber ;;
     *)
       step "建 GitHub Release 草稿 $tag"
-      gh release create "$tag" "${assets[@]}" --draft --verify-tag --notes-from-tag --title "Snug $version" ;;
+      gh release create "$tag" "${assets[@]}" --draft --verify-tag --notes-from-tag --title "$NAME $version" ;;
   esac
   if [[ $state != "published" ]]; then
     step "公开 $tag"
@@ -636,16 +656,14 @@ cmd_ship() {
     verify_download "$REPO_URL/releases/download/$tag/${asset:t}" "$(shasum -a 256 "$asset" | cut -d ' ' -f 1)"
   done
 
-  publish_cos "$version" "dist/$version"
-  publish_cos_update "$version" "dist/$version"
-  print -- "✅ Snug $version 已发布：$REPO_URL/releases/tag/$tag · 国内源 $DOWNLOAD_BASE/v$version/$dmg_name"
+  print -- "✅ $NAME $version 已发布：$REPO_URL/releases/tag/$tag"
 }
 
 # 把 GitHub 上已经公开的版本补传到国内源：包从 GitHub 下载、比过校验值再传，两边是同一个文件
 cmd_mirror() {
   local version="${1#v}"
   [[ $version =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]] || die "用法：scripts/snug mirror <版本>，比如 scripts/snug mirror 2.0.0"
-  local tag="v$version" name="Snug-$version.dmg"
+  local tag="v$version" name="$NAME-$version.dmg"
   check_github_account
   require_cos_setup
   [[ "$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)" == "false" ]] \

@@ -59,14 +59,14 @@ public struct ReleaseNote: Codable, Equatable, Sendable {
         self.body = body
     }
 
-    /// 标签说明 → 更新日志。第一行去掉开头的「Snug 2.0.1：」当标题；
+    /// 标签说明 → 更新日志。第一行去掉开头的「PocketDesk 3.0.0：」当标题（Snug 时期的标签是「Snug 2.0.1：」，一样去掉）；
     /// 「安装」一节（下载 dmg、拖进「应用程序」）是写给 GitHub 上手动下载的人的，App 里更新用不着，去掉
     public init(version: Version, date: String, tagMessage: String) {
         var lines = tagMessage.split(separator: "\n", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespaces) }
         let first = lines.isEmpty ? "" : lines.removeFirst()
-        let prefix = "Snug \(version)："
-        let title = first.hasPrefix(prefix) ? String(first.dropFirst(prefix.count)) : first
+        let title = ["PocketDesk", "Snug"].map { "\($0) \(version)：" }.first { first.hasPrefix($0) }
+            .map { String(first.dropFirst($0.count)) } ?? first
         var body: [String] = []
         var skipping = false
         for line in lines {

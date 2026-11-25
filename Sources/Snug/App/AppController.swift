@@ -149,7 +149,7 @@ final class AppController: Sendable {
 
     /// 停止监控（退出收尾前调用）
     func stopMonitoring() {
-        restoreInputSource(because: "退出 Snug")
+        restoreInputSource(because: "退出 PocketDesk")
         tickTimer?.invalidate()
         tickTimer = nil
         watcher?.stop()
@@ -282,7 +282,7 @@ final class AppController: Sendable {
         }.map(\.displayName)
         guard stale != state.staleRemotes else { return }
         Log.info(stale.isEmpty ? "只在启动时读一次显示器的远控都看得到 Snug 的屏了"
-                               : "\(stale.joined(separator: "、")) 比 Snug 的屏先启动，看不到这些屏：要重启它（菜单栏有「重启」）")
+                               : "\(stale.joined(separator: "、")) 比 PocketDesk 的屏先启动，看不到这些屏：要重启它（菜单栏有「重启」）")
         state.staleRemotes = stale
     }
 
