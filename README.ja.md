@@ -1,6 +1,6 @@
 <div align="center">
 
-[简体中文](README.md) · [English](README.en.md) · **日本語**
+[简体中文](README.snug.md) · [English](README.en.md) · **日本語**
 
 <img src="Assets/AppIcon/AppIcon-1024.png" width="128" alt="Snug アイコン">
 
