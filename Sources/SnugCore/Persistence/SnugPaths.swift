@@ -10,12 +10,18 @@ public struct SnugPaths: Equatable, Sendable {
         self.logFile = logFile
     }
 
-    /// ~/Library/Application Support/Snug/ 与 ~/Library/Logs/Snug.log
-    public static var standard: SnugPaths {
+    /// ~/Library/Application Support/PocketDesk/ 与 ~/Library/Logs/PocketDesk.log。
+    /// 和 Snug 分开放：同一台 Mac 上装着 Snug 时，两边不抢同一份设置和还原账（Snug 的设置第一次启动时拷过来，见 BrandMigration）
+    public static var standard: SnugPaths { inLibrary(named: "PocketDesk") }
+
+    /// Snug 原来的位置：~/Library/Application Support/Snug/ 与 ~/Library/Logs/Snug.log。只在迁移时读，不往里写
+    public static var snug: SnugPaths { inLibrary(named: "Snug") }
+
+    private static func inLibrary(named name: String) -> SnugPaths {
         let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
         return SnugPaths(
-            dataDirectory: library.appendingPathComponent("Application Support/Snug", isDirectory: true),
-            logFile: library.appendingPathComponent("Logs/Snug.log"))
+            dataDirectory: library.appendingPathComponent("Application Support/\(name)", isDirectory: true),
+            logFile: library.appendingPathComponent("Logs/\(name).log"))
     }
 
     /// 用户设置

@@ -37,6 +37,20 @@ case .setMode(let display, let target):
 case .app, .previewScreens:
     let paths = SnugPaths.standard
     Log.setSink(FileLogSink(url: paths.logFile))
+    // 第一次启动：PocketDesk 还没有设置时，拷来 Snug 的（建屏、读配置之前）
+    do {
+        switch try BrandMigration.run(from: .snug, to: paths) {
+        case .copied:
+            Log.info("从 Snug 拷来设置和字号记录（\(SnugPaths.snug.dataDirectory.path) → \(paths.dataDirectory.path)），"
+                     + "屏名开头的「Snug 」换成「PocketDesk 」；Snug 的目录原样留着")
+        case .sourceCorrupt:
+            Log.warn("Snug 的 config.json 解不开（\(SnugPaths.snug.config.path)），没有迁，PocketDesk 从默认设置起")
+        case .alreadyThere, .nothingToCopy:
+            break
+        }
+    } catch {
+        Log.error("从 Snug 拷设置失败（\(SnugPaths.snug.dataDirectory.path) → \(paths.dataDirectory.path)），这次从默认设置起：\(error)")
+    }
     let app = NSApplication.shared
     let delegate = MainActor.assumeIsolated { AppDelegate(paths: paths, preview: mode == .previewScreens) }
     app.delegate = delegate

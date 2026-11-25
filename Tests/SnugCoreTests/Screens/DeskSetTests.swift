@@ -49,7 +49,7 @@ struct DeskSetTests {
         #expect(rig.journal.all == ["snapshot", "create", "create", "restore"])
         #expect(rig.set.state.desks[.phone]?.screen == .ready(101))
         #expect(rig.set.state.desks[second]?.screen == .ready(102))
-        #expect(rig.displays.specs[101]?.name == "Snug 手机屏")
+        #expect(rig.displays.specs[101]?.name == "PocketDesk 手机屏")
         #expect(rig.displays.specs[102]?.name == "Snug 第二块")
     }
 

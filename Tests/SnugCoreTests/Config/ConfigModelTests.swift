@@ -13,7 +13,7 @@ struct ConfigModelTests {
         #expect(!c.screenshot)
         #expect(c.zoomSteps == 2)
         #expect(!c.welcomed)
-        #expect(c.updateSource == .tencent)
+        #expect(c.updateSource == .github)
         #expect(c.lastVersion == nil)
     }
 
@@ -27,7 +27,7 @@ struct ConfigModelTests {
         let phone = DeviceChoice(model: "华为 Mate 70 Pro", screen: DeviceScreen(width: 1260, height: 2832))
         #expect(c.screens == [.legacyPhone(phone, enabled: false)])
         #expect(c.screens[0].id == .phone)
-        #expect(c.screens[0].name == "Snug 手机屏")
+        #expect(c.screens[0].name == "PocketDesk 手机屏")
         #expect(c.screens[0].serials == [200_000_108, 200_000_118, 200_000_128])
         #expect(c.screens[0].device.kind == .phone)
         #expect(c.zoomSteps == 3)
@@ -101,8 +101,8 @@ struct ConfigModelTests {
         let b = c.addScreen(orientation: .landscape, device: .standard, now: AppConfig.serialEpoch)!
         #expect(a.serials == [200_100_000, 200_100_001, 200_100_002])
         #expect(b.serials == [200_100_010, 200_100_011, 200_100_012])
-        #expect(a.name == "Snug iPad")
-        #expect(b.name == "Snug iPhone 17 Pro Max 横屏")
+        #expect(a.name == "PocketDesk iPad")
+        #expect(b.name == "PocketDesk iPhone 17 Pro Max 横屏")
         #expect(a.id != b.id)
         c.removeScreen(a.id)
         let d = c.addScreen(orientation: .portrait, device: .standard, name: "我的手机", now: AppConfig.serialEpoch)!
@@ -203,7 +203,14 @@ struct ConfigModelTests {
     @Test("不认识的更新源（比如更新的版本写的）用默认值，不把整份配置判为损坏")
     func unknownUpdateSource() throws {
         let c = try JSONDecoder().decode(AppConfig.self, from: Data(#"{"updateSource":"mirror","zoomSteps":3}"#.utf8))
-        #expect(c.updateSource == .tencent)
+        #expect(c.updateSource == .github)
+        #expect(c.zoomSteps == 3)
+    }
+
+    @Test("从 Snug 迁来的配置选的是腾讯云：PocketDesk 没有这个源，改用 GitHub")
+    func snugTencentSource() throws {
+        let c = try JSONDecoder().decode(AppConfig.self, from: Data(#"{"updateSource":"tencent","zoomSteps":3}"#.utf8))
+        #expect(c.updateSource == .github)
         #expect(c.zoomSteps == 3)
     }
 

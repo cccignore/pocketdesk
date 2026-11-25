@@ -13,8 +13,11 @@ struct PersistenceTests {
         #expect(p.placedRecord(for: ScreenID("abc")).path == "/d/placed/abc.json")
         #expect(p.legacyPlacedRecord.path == "/d/phone-screen.json")
         #expect(p.zoomBook.path == "/d/zoom.json")
-        #expect(SnugPaths.standard.dataDirectory.path.hasSuffix("Library/Application Support/Snug"))
-        #expect(SnugPaths.standard.logFile.path.hasSuffix("Library/Logs/Snug.log"))
+        #expect(SnugPaths.standard.dataDirectory.path.hasSuffix("Library/Application Support/PocketDesk"))
+        #expect(SnugPaths.standard.logFile.path.hasSuffix("Library/Logs/PocketDesk.log"))
+        // 迁移的来源：Snug 原来的位置
+        #expect(SnugPaths.snug.dataDirectory.path.hasSuffix("Library/Application Support/Snug"))
+        #expect(SnugPaths.snug.logFile.path.hasSuffix("Library/Logs/Snug.log"))
     }
 
     @Test("JSONFile.load 区分不存在 / 损坏 / 成功")

@@ -16,9 +16,9 @@ public struct AppConfig: Codable, Equatable, Sendable {
     public var zoomSteps = 2
     /// 是否已看过首次启动的欢迎页
     public var welcomed = false
-    /// 从哪检查和下载更新。UU远程 的用户基本在国内，默认腾讯云
-    public var updateSource = UpdateSource.tencent
-    /// 上次运行的版本：和这次不一样说明刚换了版本，启动时弹「关于 Snug」
+    /// 从哪检查和下载更新。PocketDesk 只有 GitHub 一个源
+    public var updateSource = UpdateSource.github
+    /// 上次运行的版本：和这次不一样说明刚换了版本，启动时弹「关于 PocketDesk」
     public var lastVersion: Version?
 
     public static let zoomStepsRange = 0...4
@@ -119,7 +119,7 @@ public struct AppConfig: Codable, Equatable, Sendable {
         screenshot = try c.decodeIfPresent(Bool.self, forKey: .screenshot) ?? d.screenshot
         zoomSteps = try c.decodeIfPresent(Int.self, forKey: .zoomSteps).map { $0.clamped(to: Self.zoomStepsRange) } ?? d.zoomSteps
         welcomed = try c.decodeIfPresent(Bool.self, forKey: .welcomed) ?? d.welcomed
-        // 不认识的更新源（更新的版本加的、降级回来）用默认值
+        // 不认识的更新源（更新的版本加的、降级回来，或者从 Snug 迁来的腾讯云）用默认值
         updateSource = (try? c.decodeIfPresent(UpdateSource.self, forKey: .updateSource)) ?? d.updateSource
         lastVersion = try? c.decodeIfPresent(Version.self, forKey: .lastVersion)
     }
