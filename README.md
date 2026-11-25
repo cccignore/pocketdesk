@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="Assets/AppIcon/AppIcon-1024.png" width="128" alt="PocketDesk 图标">
+
 # PocketDesk
 
 **Make CrossDesk Native on iPhone**
