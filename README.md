@@ -15,8 +15,8 @@
 PocketDesk 是一个 Mac 应用，主要为了在手机上用 Mac 里的 Claude、ChatGPT 这类 App。它基于开源项目 [Snug](https://github.com/zephyr4123/snug) 开发，加上了对开源远控 [CrossDesk](https://github.com/kunkundi/crossdesk) 的适配：Mac 装 PocketDesk 和 CrossDesk，iPhone 只装 CrossDesk。
 
 > [!NOTE]
-> 改名还没做完：App 里的名字、图标和默认屏名暂时还是 Snug 的，装好后在「应用程序」里叫 Snug.app。
-> App 自带的检查更新连的还是上游 Snug 的更新源，**不要点更新**，否则会装回上游版本，CrossDesk 适配就没了。
+> 从 Snug 换过来：PocketDesk 第一次启动时会拷来 Snug 的设置，屏名开头的「Snug 」换成「PocketDesk 」，Snug 自己的设置原样留着。
+> bundle id 换了，辅助功能、录屏权限要重新给一次；两个别同时开。
 
 ## 能做什么
 
@@ -28,15 +28,17 @@ PocketDesk 是一个 Mac 应用，主要为了在手机上用 Mac 里的 Claude�
 
 ## 安装
 
-现在还没有打好的安装包（发布后在 [Releases](https://github.com/cccignore/pocketdesk/releases)），目前从源码装，需要 macOS 14 以上和 Xcode（Swift 工具链）：
+从 [Releases](https://github.com/cccignore/pocketdesk/releases/latest) 下载 `PocketDesk-<版本>.dmg`，打开后把 PocketDesk 拖进「应用程序」。需要 macOS 14 以上，Apple 芯片和 Intel 通用。
+
+安装包没有经过 Apple 公证（ad-hoc 签名）：第一次打开会被系统拦下，到「系统设置 → 隐私与安全性」最下面点「仍要打开」。应用内检查更新只提示有新版本、打开下载页，不会自动替换。
+
+从源码装（需要 Xcode）：
 
 ```bash
 git clone https://github.com/cccignore/pocketdesk.git
 cd pocketdesk
 scripts/snug install
 ```
-
-`install` 会打出 App、装进「应用程序」并打开。没有 Developer ID 证书时是 ad-hoc 签名，只能在这台 Mac 上用，每次重新打包后要重新给辅助功能授权。它装到 `/Applications/Snug.app`，机器上原来装的 Snug 会被替换。
 
 ## 怎么用
 
