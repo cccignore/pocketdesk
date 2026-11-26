@@ -6,7 +6,7 @@
 
 | 位置 | 内容 |
 | :--- | :--- |
-| `Sources/Remotes/CrossDesk/Logic`（`RemoteCrossDesk`） | 身份 `CrossDeskRemote`、信号 `CrossDeskSignals`、手势整理 `CrossDeskShaper`、日志解析 `CrossDeskLogRecord`、自检判定 `CrossDeskCheck` |
+| `Sources/Remotes/CrossDesk/Logic`（`RemoteCrossDesk`） | 身份 `CrossDeskRemote`、信号 `CrossDeskSignals`、手势整理 `CrossDeskShaper`、日志解析 `CrossDeskLogRecord`、自检判定 `CrossDeskCheck`、重启前的现场确认 `CrossDeskRestartCheck` |
 | `Sources/Remotes/CrossDesk/System`（`RemoteCrossDeskSystem`） | 适配器 `CrossDeskRemoteAdapter`、进程与电源断言 `CrossDeskApp`、诊断 `CrossDeskDump` 与 `CrossDeskCheckRun` |
 | `Tests/Remotes/CrossDesk`（`RemoteCrossDeskTests`） | 以上纯逻辑的测试，手势整理按 TouchPipeline 端到端跑 |
 
@@ -67,9 +67,10 @@ CrossDesk 在启动时读一次显示器列表，按当时的数目注册视频�
 - **没人远程时**：常驻的屏本机看不见，指针停上去就收回
 - **启动顺序**：CrossDesk 比 Snug 的屏先启动（开机时两个都自动打开）就少登记了 Snug 的屏。适配器在 CrossDesk 每次启动后到后台读一次它的日志，报这次登记了哪些显示器（`RemoteObservation.registeredDisplays`，取抓屏初始化成功了的那一批）。Snug 的屏登记过的切得到；没登记过的要正好落在一个原来那块已经不在的位置上（此刻显示器列表里同一序号，`RegisteredDisplays`），落不上时 Snug 在没人远程时自动重启它（见下一条）。之后接上的外接屏、随航不算，只在占了空出的位置时影响判断。日志还没读回来、读了 5 次都没找到这一批时按启动时刻比：它比哪块屏这一次上线早就提示。序号按能单独显示的屏（去掉镜像从属屏）的顺序，当它和 CrossDesk 用的 ScreenCaptureKit 一致（模拟器实测 Snug 重启后补上的正是列表里的第 2 块）。CrossDesk 补过位后会改记那个位置抓的是哪块，Snug 只按启动时登记的算，补过位之后又重建了屏时可能判错（未实测）
 - **自动重启**：CrossDesk 看不到 Snug 的屏、又没人远程时，Snug 自动重启它：退出、等它退完（最多 10 秒）、再打开（不抢前台），3 秒后还在运行才算成。每个决定在日志里记一行「自动重启 CrossDesk：……」，写明为什么重启、为什么先不重启。判定在 `SnugCore` 的 `AutoRestart`：
-  - 远程中（含断开后等重连的 15 秒）不重启，等远程结束。会话层说不在远程还不够，还要读得到它的电源断言、确实没持有（`RemoteObservation.absent`），读不到时不重启
+  - 远程中（含断开后等重连的 15 秒）不重启，等远程结束
+  - 会话层说不在远程还不够。控制端一连上 CrossDesk 就记下了要锁屏（`peer_event_handler.cpp` 的 `disconnect_lock_.Connected`），电源断言却要等分辨率设好、开始抓屏才持有（最多约 2 秒，`display_resolution_state.h`；抓屏起不来时每秒重试、一直不持有），这段时间会话层看不到有人。所以动手前适配器现场确认一次（`restartBlocker`，判定在 `CrossDeskRestartCheck`）：读得到电源断言、没持有，并且 `~/Library/Logs/CrossDesk/` 下的 `crossdesk.log`、`minirtc.log` 都静了 10 秒以上。有人在连时这两份日志一直在写（真机 11-26：`minirtc.log` 在持有断言前 1.4 秒写下「Remote user joined transmission」，之后写握手；抓屏重试写进 `crossdesk.log`），没人时都静着。确认不了就等，退出它的前一刻再确认一次
   - 看不到要持续 5 秒才动手：几块屏陆续建好、它的日志还在后台读时结论会变，这一批屏变了就重新等
-  - 同一批屏只自动重启一次（Snug 每次建屏编号都会变，新编号就是新的一批），两次自动重启至少隔 60 秒
+  - 同一批屏只重启一次（Snug 每次建屏编号都会变，新编号就是新的一批；记得最近 8 批，手动点的「重启」也算），两次重启至少隔 60 秒
   - 退不掉、打不开、打开后 3 秒内又退出，或者重启后还是看不到，这一批屏不再自动重启，菜单栏在没人远程时给「重启 CrossDesk」手动点（打不开时它已经退出了，要手动打开 CrossDesk）
 - **远程中 Snug 重启**：屏撤掉的那一刻 CrossDesk 改抓内建屏（同一路视频流），手机上的画面换成 Mac 的主屏、比例不对。新屏建好后在 CrossDesk 的显示器菜单里再选一次 Snug 的屏，或者断开重连
 - **手势只接管装着的远控**：没装 CrossDesk 时不收不按键的移动，事件监听和只有 UU 时一样；装着时本机的指针移动也会经过 Snug 的事件监听（原样放行）
@@ -99,5 +100,6 @@ CrossDesk 在启动时读一次显示器列表，按当时的数目注册视频�
 - 装上、卸掉远控时手势监听要重开，正按着的那一下、正在走的惯性随之丢掉
 - 鼠标模式选「相对位置」时手指移动也是不按键的移动，会被当成滑动，所以要用「绝对位置」
 - 在手机上「退出这块屏」会撤掉常驻的屏，下次建出来的新屏 CrossDesk 要重启才看得到，Snug 等这次远程结束后自动重启它
-- 自动重启只认电源断言判断有没有人连着。控制端刚连上、CrossDesk 还没开始抓屏的那一下（通常一帧，抓屏一直起不来时更久，比如它升级后丢了屏幕录制权限）它不持有断言，正好赶上自动重启会锁屏（未实测）
-- 本机正用 CrossDesk 控制别的设备时它也不持有断言，赶上自动重启会断掉那一路（锁屏只管连进来的控制端，不会锁屏）
+- 自动重启前确认没人正在连，靠的是 P2P、中继连接时 `minirtc.log` 写下的握手。局域网 IP 直连（`lan/`）连上之前写不写日志、写在哪份里，源码里没找到，未实测
+- 最后一次确认和 CrossDesk 收到退出之间还隔着几十毫秒。有人正好在这几十毫秒里从头连上（握手实测要 1 秒多）才会锁屏，没有办法再排除
+- 本机正用 CrossDesk 控制别的设备时它不持有断言，日志也可能静着，赶上自动重启会断掉那一路（锁屏只管连进来的控制端，不会锁屏）

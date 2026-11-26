@@ -122,8 +122,8 @@ extension AppController: AppIntents {
 
     func restartStaleRemotes() {
         guard state.connection == .idle else { return Log.info("远程进行中，不重启 \(state.staleRemotes.joined(separator: "、"))") }
-        for identity in remotes.map(\.identity) where state.staleRemotes.contains(identity.displayName) {
-            Task { _ = await restartRemote(identity, automatic: false) }
+        for remote in remotes where state.staleRemotes.contains(remote.identity.displayName) {
+            Task { _ = await restartRemote(remote, automatic: false) }
         }
     }
 

@@ -25,6 +25,15 @@ package enum CrossDeskApp {
         })
     }
 
+    /// 它的几份日志（CrossDeskRestartCheck.logNames）最后写入的时刻；读不到的为 nil。只读文件属性，不读内容
+    package nonisolated static func logsWrittenAt() -> [(name: String, writtenAt: Date?)] {
+        let folder = CrossDeskLogRecord.path.deletingLastPathComponent()
+        return CrossDeskRestartCheck.logNames.map { name in
+            let attributes = try? FileManager.default.attributesOfItem(atPath: folder.appendingPathComponent(name).path)
+            return (name, attributes?[.modificationDate] as? Date)
+        }
+    }
+
     /// 装着的 CrossDesk 的版本；没装为 nil，装了读不到版本为「版本未知」
     package static func installedVersion() -> String? {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: CrossDeskRemote.bundleID) else { return nil }

@@ -15,17 +15,6 @@ struct RemoteContractTests {
         }
     }
 
-    @Test("确知没人连着要有正面证据：读不到、有人连着都不算；在场和没人不会同时成立", arguments: drivers)
-    func confirmedAbsence(driver: any RemoteDriver) {
-        #expect(!driver.unreadable().absent)
-        for observation in [driver.connected(controllers: ["iPhone"]), driver.streaming(79)] {
-            #expect(!observation.absent)
-        }
-        for observation in [driver.idle(), driver.unreadable(), driver.connected(controllers: ["iPhone"]), driver.streaming(79)] {
-            #expect(!(observation.present && observation.absent))
-        }
-    }
-
     @Test("标准时序：连入 → 换控制端 → 断开 → 等待期内重连 → 读不到 → 断开 → 结束，会话变化和别家一样", arguments: drivers)
     func standardSequence(driver: any RemoteDriver) {
         let names: ([String]) -> [String] = { driver.namesControllers ? $0 : [] }

@@ -79,5 +79,15 @@ package final class CrossDeskRemoteAdapter: RemoteAdapter {
         }
     }
 
+    /// 现场读一次电源断言和两份日志的写入时刻（判定见 CrossDeskRestartCheck）：断言要等开始抓屏才持有，刚连上的那一下靠日志看出来
+    package func restartBlocker() -> String? {
+        let pids = CrossDeskApp.running().map(\.processIdentifier)
+        let sharing: Bool? = switch CrossDeskApp.sharing(pids: pids) {
+        case .success(let held): held
+        case .failure: nil
+        }
+        return CrossDeskRestartCheck.blocker(sharing: sharing, logs: CrossDeskApp.logsWrittenAt(), now: Date())
+    }
+
     package nonisolated static func makeTouchShaper() -> any TouchShaper { CrossDeskShaper() }
 }
