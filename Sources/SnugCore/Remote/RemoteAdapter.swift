@@ -135,7 +135,7 @@ public protocol RemoteAdapter: AnyObject {
     func sample(wallClock: Date) -> RemoteObservation
     /// 这家的手势整理（见 TouchShaper）：每次开启手势翻译各建一份，在监听线程上用。默认原样直通
     nonisolated static func makeTouchShaper() -> any TouchShaper
-    /// 现在退出、重开它安不安全：现场确认没人连着、也没人正在连交 nil，不行交原因（写进日志）。自动重启只在交 nil 时动手，
+    /// 现在退出、重开它安不安全：现场确认退出它不会锁屏、也不会断掉正在进行的远程交 nil，不行交原因（写进日志）。自动重启只在交 nil 时动手，
     /// 重启的那一下退出前再问一次（见 AutoRestart）。默认交「确认不了」：没实现的远控不自动重启
     func restartBlocker() -> String?
 }

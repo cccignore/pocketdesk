@@ -25,22 +25,6 @@ package enum CrossDeskApp {
         })
     }
 
-    /// 它自己的日志，滚动过的旧日志在前
-    private nonisolated static func logFiles() -> [URL] {
-        let current = CrossDeskLogRecord.path
-        let folder = current.deletingLastPathComponent()
-        return (1...3).reversed().map { folder.appendingPathComponent("crossdesk.\($0).log") } + [current]
-    }
-
-    /// 它自己的几份日志的写入时刻和大小：变了才要重读（滚动、续写都会变）
-    package nonisolated static func logSignature() -> [String] {
-        logFiles().map { url in
-            let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
-            let written = (attributes?[.modificationDate] as? Date)?.timeIntervalSinceReferenceDate ?? 0
-            return "\(url.lastPathComponent) \(written) \((attributes?[.size] as? NSNumber)?.intValue ?? -1)"
-        }
-    }
-
     /// 它的几份日志（CrossDeskRestartCheck.logNames）最后写入的时刻；读不到的为 nil。只读文件属性，不读内容
     package nonisolated static func logsWrittenAt() -> [(name: String, writtenAt: Date?)] {
         let folder = CrossDeskLogRecord.path.deletingLastPathComponent()
@@ -48,6 +32,15 @@ package enum CrossDeskApp {
             let attributes = try? FileManager.default.attributesOfItem(atPath: folder.appendingPathComponent(name).path)
             return (name, attributes?[.modificationDate] as? Date)
         }
+    }
+
+    /// 它的「连接断开后锁屏」设置；读不到设置文件为 nil。它把设置放在 $XDG_CACHE_HOME/CrossDesk/config.ini，没设这个变量时是
+    /// ~/.cache/CrossDesk/config.ini（platform/macos/path_backend.cpp）。在设置里改了就写这个文件，所以读到的就是它此刻用的
+    package nonisolated static func lockOnDisconnect() -> Bool? {
+        let cache = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"].map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache")
+        guard let text = try? String(contentsOf: cache.appendingPathComponent("CrossDesk/config.ini"), encoding: .utf8) else { return nil }
+        return CrossDeskRestartCheck.lockOnDisconnect(config: text)
     }
 
     /// 装着的 CrossDesk 的版本；没装为 nil，装了读不到版本为「版本未知」
@@ -65,7 +58,10 @@ package enum CrossDeskApp {
     }
 
     package nonisolated static func logLines() -> [String]? {
-        let texts = logFiles().compactMap { try? String(contentsOf: $0, encoding: .utf8) }
+        let current = CrossDeskLogRecord.path
+        let folder = current.deletingLastPathComponent()
+        let rotated = (1...3).reversed().map { folder.appendingPathComponent("crossdesk.\($0).log") }
+        let texts = (rotated + [current]).compactMap { try? String(contentsOf: $0, encoding: .utf8) }
         guard !texts.isEmpty else { return nil }
         return texts.flatMap { $0.split(separator: "\n").map(String.init) }
     }

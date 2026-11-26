@@ -44,7 +44,7 @@ scripts/snug install
 
 1. **Mac**：装 CrossDesk（[Releases](https://github.com/kunkundi/crossdesk/releases) 里的 `.pkg`），按提示给屏幕录制和辅助功能权限
 2. **iPhone**：从 App Store 装 CrossDesk。中国大陆区商店没有上架，香港、台湾、日本、新加坡、美国区有；没有外区账号的，可以按 CrossDesk 仓库里 `apps/ios/README.md` 用 Xcode 自己签名装。设置里「鼠标控制」的控制模式选「绝对位置」
-3. PocketDesk 和 CrossDesk 先开哪个都行：CrossDesk 看不到手机屏时（比它先启动、PocketDesk 重启过），没人远程、也确认了没人正在连的话 PocketDesk 会自动重启它，远程中不重启（这时退出 CrossDesk 会断掉远程、锁屏）。自动重启没成时菜单栏留着「重启 CrossDesk」，点一下
+3. 在 Mac 上 CrossDesk 的设置里关掉「连接断开后锁屏」。之后 PocketDesk 和 CrossDesk 先开哪个都行：CrossDesk 看不到手机屏时（比它先启动、PocketDesk 重启过），没人远程的话 PocketDesk 会自动重启它，远程中不重启。这一项开着时退出 CrossDesk 可能锁屏，PocketDesk 不自动重启；这时、或者自动重启没成时，菜单栏留着「重启 CrossDesk」，点一下
 4. iPhone 连上后，在 CrossDesk 悬浮球的「显示器」里选 PocketDesk 的屏（CrossDesk 每次连上都从第一块屏开始）
 5. 要打字时从悬浮球的「键盘」打开键盘
 

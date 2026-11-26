@@ -381,7 +381,7 @@ final class AppController: Sendable {
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = "现在重启 \(identity.displayName) 可能锁屏"
-        alert.informativeText = "\(reason)。有控制端连着时退出 \(identity.displayName) 会断掉远程，可能锁屏。确认手机已经断开再重启。"
+        alert.informativeText = "\(reason)。确认手机已经断开再重启。"
         alert.addButton(withTitle: "取消")
         alert.addButton(withTitle: "仍要重启")
         NSApp.activate()

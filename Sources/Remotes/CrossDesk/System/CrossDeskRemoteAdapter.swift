@@ -16,8 +16,6 @@ package final class CrossDeskRemoteAdapter: RemoteAdapter {
     private var reading: (pid: pid_t, tries: Int, next: TimeInterval, inFlight: Bool)?
     private static let readRetry: TimeInterval = 2
     private static let readTries = 5
-    /// 日志里有没有控制端连着（restartBlocker 用）：按几份日志的写入时刻和大小记一份，日志没变就不再读
-    private var connectedPerLog: (signature: [String], pid: pid_t, connected: Bool?)?
 
     package init() {}
 
@@ -81,35 +79,16 @@ package final class CrossDeskRemoteAdapter: RemoteAdapter {
         }
     }
 
-    /// 现场读一次电源断言、两份日志的写入时刻，前两样都过了再看日志里有没有控制端连着（判定见 CrossDeskRestartCheck）：
-    /// 断言要等开始抓屏才持有，刚连上、抓屏起不来的那段靠日志看出来
+    /// 现场读一次它的锁屏设置、电源断言和两份日志的写入时刻（判定见 CrossDeskRestartCheck）：关着「连接断开后锁屏」退出它才不会锁屏，
+    /// 断言、日志管不断掉正在进行的远程
     package func restartBlocker() -> String? {
-        let app = CrossDeskApp.running().first
-        let sharing: Bool? = switch CrossDeskApp.sharing(pids: app.map { [$0.processIdentifier] } ?? []) {
+        let pids = CrossDeskApp.running().map(\.processIdentifier)
+        let sharing: Bool? = switch CrossDeskApp.sharing(pids: pids) {
         case .success(let held): held
         case .failure: nil
         }
-        return CrossDeskRestartCheck.blocker(sharing: sharing, logs: CrossDeskApp.logsWrittenAt(), now: Date()) {
-            // 没在运行就没有控制端；读不到启动时刻就分不出哪些行是这次启动的
-            guard let app else { return false }
-            guard let launched = app.launchDate else { return nil }
-            return controllerConnected(pid: app.processIdentifier, launched: launched)
-        }
-    }
-
-    /// 日志静了才会问到这里，日志一般不会再变：按写入时刻和大小记住上一次的结论，变了才重读（日志最多约 20MB，在主线程上读）
-    private func controllerConnected(pid: pid_t, launched: Date) -> Bool? {
-        let signature = CrossDeskApp.logSignature()
-        if let cached = connectedPerLog, cached.pid == pid, cached.signature == signature { return cached.connected }
-        let lines = CrossDeskApp.logLines() ?? []
-        let records = lines.filter { line in CrossDeskLogRecord.connectionMarkers.contains { line.contains($0) } }
-            .compactMap(CrossDeskLogRecord.init(line:))
-        let logStart = lines.first.flatMap(CrossDeskLogRecord.init(line:))?.date
-        let connected = CrossDeskLogRecord.controllerConnected(since: launched, in: records, logStart: logStart)
-        connectedPerLog = (signature, pid, connected)
-        Log.info("CrossDesk（pid \(pid)）日志里\(connected.map { $0 ? "最近连上的控制端还没断开" : "没有连着的控制端" } ?? "看不全这次启动以来有没有控制端连着")"
-                 + "（读了 \(lines.count) 行）")
-        return connected
+        return CrossDeskRestartCheck.blocker(lockOnDisconnect: CrossDeskApp.lockOnDisconnect(), sharing: sharing,
+                                             logs: CrossDeskApp.logsWrittenAt(), now: Date())
     }
 
     package nonisolated static func makeTouchShaper() -> any TouchShaper { CrossDeskShaper() }

@@ -1,8 +1,8 @@
 // 只在启动时读一次显示器的远控（CrossDesk）看不到 Snug 的屏时，没人远程就自动重启它：不然用户要等连上手机才发现没有手机屏。
 // 远程中绝不重启：CrossDesk 默认「连接断开后锁屏」，退出时还有控制端连着，它收尾时先断开所有会话再锁屏
 // （gui_application.cpp 的 Cleanup → BeginShutdown → HandleScreenLock）。会话层说不在远程还不够：控制端连上后它要等分辨率、
-// 开始抓屏才持有电源断言（最多约 2 秒，抓屏起不来时一直不持有），这段时间会话层看不到。所以动手前还要适配器现场确认没人连着、
-// 也没人正在连（RemoteAdapter.restartBlocker），重启的那一下退出前再确认一次。
+// 开始抓屏才持有电源断言，这段时间会话层看不到。所以动手前还要适配器现场确认退出它不会锁屏、也不会断掉远程
+// （RemoteAdapter.restartBlocker，CrossDesk 要关着「连接断开后锁屏」），重启的那一下退出前再确认一次。
 // 防循环：同一批屏只重启一次（Snug 每次建屏编号都会变，新编号就是新的一批；手动点的也算），两次重启至少隔 cooldown；
 // 没成或重启后还是看不到，留给菜单栏的「重启」手动点。每拍调一次，日志只在结论或这一批屏变了时记一行
 import Foundation
@@ -25,7 +25,7 @@ public struct AutoRestart: Sendable {
         case restarting
         /// 远程中（含断开后等重连）：等远程结束
         case inSession
-        /// 现场确认不了没人连着（读不到、刚有人在连）：等确认了
+        /// 现场确认不行（远控开着断开后锁屏、读不到、刚有人在连）：每拍再问，过了才重启
         case unconfirmed
         /// 离上次重启不到 cooldown
         case coolingDown
@@ -154,7 +154,7 @@ public struct AutoRestart: Sendable {
         case .inSession:
             return prefix + "先不重启：远程进行中（它看不到屏 \(names)），这时退出它会断掉远程、可能锁屏。等远程结束再重启"
         case .unconfirmed:
-            return prefix + "先不重启：确认不了没人连着（\(reason ?? "原因不明")），这时退出它可能锁屏。等确认了再重启（它看不到屏 \(names)）"
+            return prefix + "先不重启：\(reason ?? "确认不了没人连着")（它看不到屏 \(names)）"
         case .coolingDown:
             let elapsed = lastRestartAt.map { now.timeIntervalSince($0) } ?? 0
             return prefix + "先不重启：上次重启才过 \(Int(elapsed)) 秒，隔满 \(Int(Self.cooldown)) 秒再重启（它看不到屏 \(names)）"
