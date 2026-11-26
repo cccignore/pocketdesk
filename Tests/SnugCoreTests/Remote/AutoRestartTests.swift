@@ -120,6 +120,18 @@ struct AutoRestartTests {
         #expect(policy.idle([38], at: 30).decision == .restart)
     }
 
+    @Test("自动重启的那一下被手动重启抢了先（撞上「正在重启」）：撤回只撤自动那次，手动记下的这批屏和冷却都留着")
+    func blockedByManualRestart() {
+        var policy = AutoRestart(remote: fakeRemote.displayName)
+        _ = policy.idle([38], at: 0)
+        #expect(policy.idle([38], at: 5).decision == .restart)
+        policy.noteManualRestart(now: at(5.2))
+        #expect(policy.finished(.blocked) == nil)
+        #expect(policy.idle([38], at: 30).decision == .gaveUp)
+        #expect(policy.idle([39], at: 40).decision == .coolingDown)
+        #expect(policy.idle([39], at: 65.2).decision == .restart)
+    }
+
     @Test("手动点过「重启」也算这批屏重启过：之后还是看不到不再自动补一次，冷却从手动那次算")
     func manualRestartCounts() {
         var policy = AutoRestart(remote: fakeRemote.displayName)

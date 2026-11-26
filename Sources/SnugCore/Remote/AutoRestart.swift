@@ -61,8 +61,8 @@ public struct AutoRestart: Sendable {
     /// 重启过（自动或手动）的几批屏，最近的在后
     private var tried: [Set<DisplayID>] = []
     private var lastRestartAt: Date?
-    /// 这次自动重启之前的上次重启时刻：退出前一查不行（blocked）时撤回这次，冷却照旧从上次算
-    private var previousRestartAt: Date?
+    /// 正在跑的这次自动重启：退出前一查不行（blocked）时只撤回它，冷却照旧从上次算。手动重启抢在它前面跑了就清掉（手动记下的留着）
+    private var attempt: (screens: Set<DisplayID>, previousRestartAt: Date?)?
     public private(set) var isRestarting = false
     /// 上一拍记过日志的结论和那一批屏：没变就不再记
     private var logged: (decision: Decision, screens: Set<DisplayID>)?
@@ -91,12 +91,17 @@ public struct AutoRestart: Sendable {
         isRestarting = false
         switch outcome {
         case .reopened:
+            attempt = nil
             return nil
         case .blocked:
-            if !tried.isEmpty { tried.removeLast() }
-            lastRestartAt = previousRestartAt
+            if let attempt {
+                tried.removeAll { $0 == attempt.screens }
+                lastRestartAt = attempt.previousRestartAt
+            }
+            attempt = nil
             return nil
         case .failed:
+            attempt = nil
             let screens = tried.last.map(Self.names) ?? ""
             return "自动重启 \(remote)：没成（原因见上一行），屏 \(screens) 不再自动重启；它还在运行时菜单栏有「重启 \(remote)」，没在运行就要手动打开它"
         }
@@ -106,6 +111,7 @@ public struct AutoRestart: Sendable {
     public mutating func noteManualRestart(now: Date) {
         if let screens = batch?.screens { remember(screens) }
         lastRestartAt = now
+        attempt = nil
     }
 
     private mutating func decide(_ screens: Set<DisplayID>, inSession: Bool, now: Date, blocker: () -> String?) -> Decision {
@@ -120,8 +126,8 @@ public struct AutoRestart: Sendable {
         if let lastRestartAt, now.timeIntervalSince(lastRestartAt) < Self.cooldown { return .coolingDown }
         guard let batch, now.timeIntervalSince(batch.since) >= Self.settle else { return .settling }
         if blocker() != nil { return .unconfirmed }
+        attempt = (screens, lastRestartAt)
         remember(screens)
-        previousRestartAt = lastRestartAt
         lastRestartAt = now
         isRestarting = true
         return .restart

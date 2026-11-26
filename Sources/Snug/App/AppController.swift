@@ -334,8 +334,17 @@ final class AppController: Sendable {
             return .blocked
         }
         if let reason = remote.restartBlocker() {
-            Log.info("不\(action) \(identity.displayName)：确认不了没人连着（\(reason)），这时退出它可能锁屏")
-            return .blocked
+            // 自动重启从不冒这个险；手动点的问一句，用户知道可能锁屏、点了「仍要重启」才退出（不然点了菜单没反应）
+            guard !automatic, confirmRiskyRestart(identity, reason: reason) else {
+                Log.info("不\(action) \(identity.displayName)：确认不了没人连着（\(reason)），这时退出它可能锁屏")
+                return .blocked
+            }
+            // 弹窗开着的时候可能有人连上了
+            guard state.connection == .idle else {
+                Log.info("远程进行中，不\(action) \(identity.displayName)")
+                return .blocked
+            }
+            Log.warn("确认不了没人连着（\(reason)），用户点了「仍要重启」：照样重启 \(identity.displayName)")
         }
         let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
         guard let url = apps.compactMap(\.bundleURL).first else {
@@ -365,6 +374,18 @@ final class AppController: Sendable {
             Log.error("重新打开 \(identity.displayName) 失败（\(url.path)）：\(error)，要手动打开它")
             return .failed
         }
+    }
+
+    /// 手动点「重启」时现场确认不了没人连着：问一句，默认按钮是「取消」。菜单栏 App 平时不在前台，先切到前台弹窗才看得见
+    private func confirmRiskyRestart(_ identity: RemoteIdentity, reason: String) -> Bool {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "现在重启 \(identity.displayName) 可能锁屏"
+        alert.informativeText = "\(reason)。有控制端连着时退出 \(identity.displayName) 会断掉远程，可能锁屏。确认手机已经断开再重启。"
+        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: "仍要重启")
+        NSApp.activate()
+        return alert.runModal() == .alertSecondButtonReturn
     }
 
     /// 装着哪几家远控：手势只接管装着的（没装的远控要的事件不收，比如 CrossDesk 的不按键的移动，只装 UU 时监听和以前一样）；
