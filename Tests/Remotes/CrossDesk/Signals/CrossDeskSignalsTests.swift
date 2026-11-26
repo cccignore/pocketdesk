@@ -20,6 +20,13 @@ struct CrossDeskSignalsTests {
         #expect(CrossDeskSignals(running: true, sharing: false).observation().registeredDisplays == nil)
     }
 
+    @Test("确知没人连着只认读得到、没持有的电源断言：读不到、在共享都不算（自动重启它靠这一条，连着时退出它会锁屏）")
+    func absence() {
+        #expect(CrossDeskSignals(running: true, sharing: false).observation().absent)
+        #expect(!CrossDeskSignals(running: true, sharing: nil).observation().absent)
+        #expect(!CrossDeskSignals(running: true, sharing: true).observation().absent)
+    }
+
     @Test("身份：按记号认注入的事件（界面和注入是同一个程序），资源库排除 CrossDesk 自己")
     func identity() {
         let identity = CrossDeskRemote.identity

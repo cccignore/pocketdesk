@@ -91,6 +91,9 @@ public struct InjectedEventSource: Equatable, Sendable, CustomStringConvertible 
 public struct RemoteObservation: Equatable, Sendable {
     /// 有人在远程的正面证据。读不到、没认出都不算缺席：适配器只在确有证据时报在场
     public var present: Bool
+    /// 确知没人连着的正面证据：信号读得到、确实没有控制端。读不到、认不出都为 false。
+    /// 自动重启远控只认它（见 AutoRestart）：有人连着时退出远控会断掉这次远程，CrossDesk 还会锁屏
+    public var absent: Bool
     /// 认出的控制端，按适配器给的顺序。空 = 没认出，不代表没人
     public var controllers: [String]
     /// 此刻在推的屏。nil = 不知道，不代表没在推（AppState.watching 把 nil 当作「在看」）
@@ -101,8 +104,10 @@ public struct RemoteObservation: Equatable, Sendable {
     /// nil = 不知道（不读显示器的远控、还没读到），按它的启动时刻和屏的上线时刻判断
     public var registeredDisplays: [DisplayID]?
 
-    public init(present: Bool, controllers: [String], streamedDisplay: DisplayID?, evidence: String, registeredDisplays: [DisplayID]? = nil) {
+    public init(present: Bool, controllers: [String], streamedDisplay: DisplayID?, evidence: String, registeredDisplays: [DisplayID]? = nil,
+                absent: Bool = false) {
         self.present = present
+        self.absent = absent
         self.controllers = controllers
         self.streamedDisplay = streamedDisplay
         self.evidence = evidence

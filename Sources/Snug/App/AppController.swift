@@ -58,6 +58,12 @@ final class AppController: Sendable {
     /// （屏幕配置一变会短暂重排）；休眠时不走拍、看不到它不在，醒来照旧不算
     private var snugDisplaysGoneAt: [DisplayID: TimeInterval] = [:]
     private static let snugDisplayBlip: TimeInterval = 2
+    /// 看不到屏的远控要不要自动重启（按日志名，每家一份，见 AutoRestart）
+    private var autoRestarts: [String: AutoRestart] = [:]
+    /// 正在重启的远控（日志名）：手动、自动的重启不叠在一起
+    private var restartsInFlight: Set<String> = []
+    /// 重新打开后等这么久再看它还在不在：打开了又马上退出的算没成
+    private static let relaunchCheck: TimeInterval = 3
     /// 单调时钟的起点：系统改时间不会让「已经过了多久」算错
     private let anchor = (date: Date(), uptime: ProcessInfo.processInfo.systemUptime)
 
@@ -252,7 +258,8 @@ final class AppController: Sendable {
     }
 
     /// 只在启动时读一次显示器的远控，按启动时登记的几块分位置切显示器，Snug 的屏没有位置可占就切不过去。开机时两个都自动打开，
-    /// 谁先谁后说不准：每拍看一眼，列进 staleRemotes，菜单栏给「重启」。远控报了登记了哪些（RemoteObservation.registeredDisplays）时
+    /// 谁先谁后说不准：每拍看一眼，列进 staleRemotes，没人远程时自动重启它（autoRestartStale），菜单栏也给「重启」。
+    /// 远控报了登记了哪些（RemoteObservation.registeredDisplays）时
     /// 按 RegisteredDisplays 判：Snug 重启后屏换了编号，占原来那块的位置照样切得到，不用重启。没报时按启动时刻比：远控的进程比
     /// 此刻在线的哪块屏这一次上线早就算看不到（屏上线和下一拍之间启动的会误报一次，重启无害）
     private func refreshStaleRemotes(at now: Date, readings: [RemoteReading]) {
@@ -280,10 +287,77 @@ final class AppController: Sendable {
             let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
             return apps.contains { ($0.launchDate ?? .distantFuture) < since }
         }.map(\.displayName)
-        guard stale != state.staleRemotes else { return }
-        Log.info(stale.isEmpty ? "只在启动时读一次显示器的远控都看得到 Snug 的屏了"
-                               : "\(stale.joined(separator: "、")) 比 PocketDesk 的屏先启动，看不到这些屏：要重启它（菜单栏有「重启」）")
-        state.staleRemotes = stale
+        if stale != state.staleRemotes {
+            Log.info(stale.isEmpty ? "只在启动时读一次显示器的远控都看得到 Snug 的屏了"
+                                   : "\(stale.joined(separator: "、")) 比 PocketDesk 的屏先启动，看不到这些屏：要重启它（没人远程时自动重启，菜单栏也有「重启」）")
+            state.staleRemotes = stale
+        }
+        autoRestartStale(readings: readings, screens: reachable)
+    }
+
+    /// 看不到屏的远控，没人远程、它也报了确知没人连着时自动重启（判定见 AutoRestart）。远程中绝不重启：CrossDesk 默认断开后锁屏，
+    /// 有控制端连着时退出它就会锁屏。screens 是此刻在线的 Snug 屏，认「这一批」用：同一批只自动重启一次，没成就留给菜单栏
+    private func autoRestartStale(readings: [RemoteReading], screens: Set<DisplayID>) {
+        for identity in remotes.map(\.identity) where identity.readsDisplaysOnce {
+            // 手动点的重启正在进行：这一拍不替它判
+            guard !restartsInFlight.contains(identity.logName) else { continue }
+            var policy = autoRestarts[identity.logName] ?? AutoRestart(remote: identity.displayName)
+            let absent = readings.first { $0.remote == identity }?.observation.absent == true
+            let step = policy.update(stale: state.staleRemotes.contains(identity.displayName) ? screens : nil,
+                                     inSession: session.inEpisode, absent: absent, now: now)
+            autoRestarts[identity.logName] = policy
+            if let line = step.logLine {
+                if step.decision == .gaveUp { Log.warn(line) } else { Log.info(line) }
+            }
+            guard step.decision == .restart else { continue }
+            Task {
+                let reopened = await restartRemote(identity, automatic: true)
+                if let line = autoRestarts[identity.logName]?.finished(reopened: reopened) { Log.warn(line) }
+            }
+        }
+    }
+
+    /// 退出、等它退完（最多 10 秒）、再打开，交回是不是重新打开了、过一会儿还在运行。退不掉（弹了确认框、卡住）就不再打开，
+    /// 菜单里的「重启」留着可以再点。automatic：自动重启，用户没点，重新打开时不抢前台
+    func restartRemote(_ identity: RemoteIdentity, automatic: Bool) async -> Bool {
+        let action = automatic ? "自动重启" : "重启"
+        guard restartsInFlight.insert(identity.logName).inserted else {
+            Log.info("\(identity.displayName) 正在重启，这次\(action)不再叠上去")
+            return false
+        }
+        defer { restartsInFlight.remove(identity.logName) }
+        // 退出前再看一眼：有人连着时退出远控会断掉远程，CrossDesk 还会锁屏
+        guard state.connection == .idle else {
+            Log.info("远程进行中，不\(action) \(identity.displayName)")
+            return false
+        }
+        let apps = identity.bundleIDs.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }
+        guard let url = apps.compactMap(\.bundleURL).first else {
+            Log.warn("要\(action) \(identity.displayName)，可它已经没在运行")
+            return false
+        }
+        Log.info("\(action) \(identity.displayName)（\(url.path)）：它比 PocketDesk 的屏先启动，看不到这些屏")
+        apps.forEach { _ = $0.terminate() }
+        for _ in 0..<100 where apps.contains(where: { !$0.isTerminated }) { try? await Task.sleep(for: .milliseconds(100)) }
+        guard apps.allSatisfy(\.isTerminated) else {
+            Log.warn("\(identity.displayName) 10 秒内没退出（可能弹了确认框），没有重新打开")
+            return false
+        }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = !automatic
+        do {
+            let app = try await NSWorkspace.shared.openApplication(at: url, configuration: configuration)
+            try? await Task.sleep(for: .seconds(Self.relaunchCheck))
+            guard !app.isTerminated else {
+                Log.error("重新打开的 \(identity.displayName)（pid \(app.processIdentifier)）\(Int(Self.relaunchCheck)) 秒内又退出了（\(url.path)），要手动打开它")
+                return false
+            }
+            Log.info("已重新打开 \(identity.displayName)（pid \(app.processIdentifier)）")
+            return true
+        } catch {
+            Log.error("重新打开 \(identity.displayName) 失败（\(url.path)）：\(error)，要手动打开它")
+            return false
+        }
     }
 
     /// 装着哪几家远控：手势只接管装着的（没装的远控要的事件不收，比如 CrossDesk 的不按键的移动，只装 UU 时监听和以前一样）；

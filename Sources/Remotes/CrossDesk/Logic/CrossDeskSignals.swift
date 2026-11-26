@@ -21,8 +21,12 @@ package struct CrossDeskSignals: Equatable, Sendable, CustomStringConvertible {
 
     package var isPresent: Bool { sharing == true }
 
+    /// 读得到电源断言、它没持有：没有控制端连着（有控制端连着、在抓屏时才持有）
+    package var isAbsent: Bool { sharing == false }
+
     package func observation() -> RemoteObservation {
-        RemoteObservation(present: isPresent, controllers: [], streamedDisplay: nil, evidence: description, registeredDisplays: registered)
+        RemoteObservation(present: isPresent, controllers: [], streamedDisplay: nil, evidence: description, registeredDisplays: registered,
+                          absent: isAbsent)
     }
 
     package var description: String {

@@ -42,7 +42,8 @@ final class AppState {
     var configSaveFailed = false
     /// 旧版「UU远程伴侣」正在运行
     var legacyAppRunning = false
-    /// 比 Snug 此刻在线的屏先启动、看不到这些屏的远控（只在启动时读一次显示器的那种），界面名。菜单栏给「重启」
+    /// 比 Snug 此刻在线的屏先启动、看不到这些屏的远控（只在启动时读一次显示器的那种），界面名。没人远程时自动重启它（AutoRestart），
+    /// 菜单栏也给「重启」
     var staleRemotes: [String] = []
     /// 远控在手机上压住画面的部分：手机屏按它让位（按装着的远控定，见 AppController.refreshInstalled）
     var clientInsets = ClientInsets.standard
