@@ -87,8 +87,9 @@ package final class CrossDeskRemoteAdapter: RemoteAdapter {
         case .success(let held): held
         case .failure: nil
         }
-        return CrossDeskRestartCheck.blocker(lockOnDisconnect: CrossDeskApp.lockOnDisconnect(), sharing: sharing,
-                                             logs: CrossDeskApp.logsWrittenAt(), now: Date())
+        // Mac 上只有一个 CrossDesk 进程；没在运行就没什么可重启的，按读不到设置挡下
+        let lock = pids.first.flatMap(CrossDeskApp.lockOnDisconnect(pid:))
+        return CrossDeskRestartCheck.blocker(lockOnDisconnect: lock, sharing: sharing, logs: CrossDeskApp.logsWrittenAt(), now: Date())
     }
 
     package nonisolated static func makeTouchShaper() -> any TouchShaper { CrossDeskShaper() }

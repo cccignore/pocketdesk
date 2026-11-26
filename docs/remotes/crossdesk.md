@@ -68,7 +68,7 @@ CrossDesk 在启动时读一次显示器列表，按当时的数目注册视频�
 - **启动顺序**：CrossDesk 比 Snug 的屏先启动（开机时两个都自动打开）就少登记了 Snug 的屏。适配器在 CrossDesk 每次启动后到后台读一次它的日志，报这次登记了哪些显示器（`RemoteObservation.registeredDisplays`，取抓屏初始化成功了的那一批）。Snug 的屏登记过的切得到；没登记过的要正好落在一个原来那块已经不在的位置上（此刻显示器列表里同一序号，`RegisteredDisplays`），落不上时 Snug 在没人远程时自动重启它（见下一条）。之后接上的外接屏、随航不算，只在占了空出的位置时影响判断。日志还没读回来、读了 5 次都没找到这一批时按启动时刻比：它比哪块屏这一次上线早就提示。序号按能单独显示的屏（去掉镜像从属屏）的顺序，当它和 CrossDesk 用的 ScreenCaptureKit 一致（模拟器实测 Snug 重启后补上的正是列表里的第 2 块）。CrossDesk 补过位后会改记那个位置抓的是哪块，Snug 只按启动时登记的算，补过位之后又重建了屏时可能判错（未实测）
 - **自动重启**：CrossDesk 看不到 Snug 的屏、又没人远程时，Snug 自动重启它：退出、等它退完（最多 10 秒）、再打开（不抢前台），3 秒后还在运行才算成。每个决定在日志里记一行「自动重启 CrossDesk：……」，写明为什么重启、为什么先不重启。判定在 `SnugCore` 的 `AutoRestart`：
   - 远程中（含断开后等重连的 15 秒）不重启，等远程结束
-  - 只在 CrossDesk 关着「连接断开后锁屏」时自动重启（读它的 `~/.cache/CrossDesk/config.ini` 的 `lock_on_disconnect`，读不到按它的默认当作开着）。开着时有控制端连着就退出它会锁屏，而有没有控制端连着从外面没法完全确认：控制端一连上它就记下了要锁屏（`peer_event_handler.cpp` 的 `disconnect_lock_.Connected`），电源断言要等分辨率设好、开始抓屏才持有（最多约 2 秒，`display_resolution_state.h`），没有屏幕录制权限时一直不持有、日志也不写。关着时锁屏请求根本不会记下（`disconnect_lock_policy.h` 两头都看这一项），退出它不会锁屏。开着时日志里记一行原因，只留菜单栏的手动「重启」
+  - 只在 CrossDesk 关着「连接断开后锁屏」时自动重启（读它的 `~/.cache/CrossDesk/config.ini` 的 `lock_on_disconnect`，节名、键名不分大小写；文件位置按 CrossDesk 进程自己的 `XDG_CACHE_HOME`、`HOME` 定，读不到按它的默认当作开着）。开着时有控制端连着就退出它会锁屏，而有没有控制端连着从外面没法完全确认：控制端一连上它就记下了要锁屏（`peer_event_handler.cpp` 的 `disconnect_lock_.Connected`），电源断言要等分辨率设好、开始抓屏才持有（最多约 2 秒，`display_resolution_state.h`），没有屏幕录制权限时一直不持有、日志也不写。关着时锁屏请求根本不会记下（`disconnect_lock_policy.h` 两头都看这一项），退出它不会锁屏。开着时日志里记一行原因，只留菜单栏的手动「重启」
   - 不断掉正在进行的远程：动手前适配器现场确认一次（`restartBlocker`，判定在 `CrossDeskRestartCheck`），读得到电源断言、没持有，并且 `~/Library/Logs/CrossDesk/` 下的 `crossdesk.log`、`minirtc.log` 都静了 10 秒以上（有人在连时握手一直在写，真机 11-26：`minirtc.log` 在持有断言前 1.4 秒写下「Remote user joined transmission」；没人时都静着）。确认不了就等，退出它的前一刻再确认一次
   - 看不到要持续 5 秒才动手：几块屏陆续建好、它的日志还在后台读时结论会变，这一批屏变了就重新等
   - 同一批屏只重启一次（Snug 每次建屏编号都会变，新编号就是新的一批；记得最近 8 批，手动点的「重启」也算），两次重启至少隔 60 秒
@@ -102,5 +102,5 @@ CrossDesk 在启动时读一次显示器列表，按当时的数目注册视频�
 - 鼠标模式选「相对位置」时手指移动也是不按键的移动，会被当成滑动，所以要用「绝对位置」
 - 在手机上「退出这块屏」会撤掉常驻的屏，下次建出来的新屏 CrossDesk 要重启才看得到，Snug 等这次远程结束后自动重启它
 - 自动重启前确认没人正在连靠的是两份日志的写入时刻，没有屏幕录制权限时连上的控制端（抓屏起不来、日志静着）看不出来，赶上自动重启会被断开（关着「连接断开后锁屏」，不会锁屏）。局域网 IP 直连的握手看源码也写进 `minirtc.log`（`lan_runtime.cpp` 用同一个日志路径建连接），未实测
-- CrossDesk 升级后先跑一次远控自检；设置文件的位置、`lock_on_disconnect` 的名字变了要跟着改 `CrossDeskApp.lockOnDisconnect`（读不到时按开着处理，只是不再自动重启）
+- CrossDesk 升级后核对设置文件的位置和 `lock_on_disconnect` 这个名字（`CrossDeskRestartCheck`）。新版换了名字时，文件里留下的旧名字仍写着关着，Snug 会当它关着，它却按新名字的默认开着
 - 本机正用 CrossDesk 控制别的设备时它不持有断言，日志也可能静着，赶上自动重启会断掉那一路（锁屏只管连进来的控制端，不会锁屏）

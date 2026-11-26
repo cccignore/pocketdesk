@@ -75,6 +75,29 @@ struct CrossDeskSettingsTests {
         #expect(CrossDeskRestartCheck.lockOnDisconnect(config: "") == true)
     }
 
+    @Test("节名、键名不分大小写（SimpleIni 的 SI_NoCase），重复的后一个算：手改出来的大小写不同的同名项不会让我们读成关着")
+    func caseInsensitive() {
+        #expect(CrossDeskRestartCheck.lockOnDisconnect(config: "[Settings]\nlock_on_disconnect = false\nLOCK_ON_DISCONNECT = true\n") == true)
+        #expect(CrossDeskRestartCheck.lockOnDisconnect(config: "[Settings]\nlock_on_disconnect = false\n[settings]\nlock_on_disconnect = true\n") == true)
+        #expect(CrossDeskRestartCheck.lockOnDisconnect(config: "[SETTINGS]\nLock_On_Disconnect = off\n") == false)
+    }
+
+    @Test("设置文件在哪：按 CrossDesk 进程自己的环境变量，XDG_CACHE_HOME 有就用它（空的也算设了），没有用 HOME/.cache")
+    func configPath() {
+        #expect(CrossDeskRestartCheck.configPath(environment: ["PATH=/usr/bin", "HOME=/Users/x"]) == "/Users/x/.cache/CrossDesk/config.ini")
+        #expect(CrossDeskRestartCheck.configPath(environment: ["HOME=/Users/x", "XDG_CACHE_HOME=/tmp/c"]) == "/tmp/c/CrossDesk/config.ini")
+        // getenv 取第一个
+        #expect(CrossDeskRestartCheck.configPath(environment: ["XDG_CACHE_HOME=/a", "XDG_CACHE_HOME=/b"]) == "/a/CrossDesk/config.ini")
+    }
+
+    @Test("设了空的、相对路径、没有 HOME：它会去读相对它工作目录的文件，我们找不准，算读不到")
+    func configPathUnknown() {
+        #expect(CrossDeskRestartCheck.configPath(environment: ["HOME=/Users/x", "XDG_CACHE_HOME="]) == nil)
+        #expect(CrossDeskRestartCheck.configPath(environment: ["XDG_CACHE_HOME=cache"]) == nil)
+        #expect(CrossDeskRestartCheck.configPath(environment: ["PATH=/usr/bin"]) == nil)
+        #expect(CrossDeskRestartCheck.configPath(environment: []) == nil)
+    }
+
     @Test("注释、行首空白、分号开头的行不算")
     func comments() {
         #expect(CrossDeskRestartCheck.lockOnDisconnect(config: "[Settings]\n; lock_on_disconnect = false\n# lock_on_disconnect = false\n") == true)

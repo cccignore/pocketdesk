@@ -18,7 +18,7 @@ package enum CrossDeskRestartCheck {
     package static func blocker(lockOnDisconnect: Bool?, sharing: Bool?, logs: [(name: String, writtenAt: Date?)], now: Date) -> String? {
         switch lockOnDisconnect {
         case nil:
-            return "读不到它的设置（~/.cache/CrossDesk/config.ini），按它的默认当作开着「连接断开后锁屏」，有控制端连着时退出它会锁屏"
+            return "读不到它的设置（它的环境变量、~/.cache/CrossDesk/config.ini），按它的默认当作开着「连接断开后锁屏」，有控制端连着时退出它会锁屏"
         case true?:
             return "它开着「连接断开后锁屏」：有控制端连着时退出它会锁屏，有没有控制端连着又没法完全确认。在 CrossDesk 设置里关掉这一项才会自动重启"
         case false?:
@@ -38,19 +38,32 @@ package enum CrossDeskRestartCheck {
         return nil
     }
 
+    /// 它的设置文件：$XDG_CACHE_HOME/CrossDesk/config.ini，没设时 $HOME/.cache/CrossDesk/config.ini（platform/macos/path_backend.cpp
+    /// 的 GetCachePath，设了空串也照用）。environment 要用 CrossDesk 进程自己的（KEY=VALUE，getenv 取第一个），不是 PocketDesk 的：
+    /// 两边从不同地方启动时不一样。设成空、相对路径，没有 HOME 时它读的是相对它工作目录的文件，我们找不准，为 nil
+    package static func configPath(environment: [String]) -> String? {
+        func value(_ key: String) -> String? {
+            environment.first { $0.hasPrefix(key + "=") }.map { String($0.dropFirst(key.count + 1)) }
+        }
+        let base = value("XDG_CACHE_HOME") ?? value("HOME").map { $0 + "/.cache" }
+        guard let base, base.hasPrefix("/") else { return nil }
+        return base + "/CrossDesk/config.ini"
+    }
+
     /// config.ini 里 [Settings] 的 lock_on_disconnect。它用 SimpleIni 读（config_center.cpp 的 GetBoolValue，默认 true）：
-    /// true/yes/on/1 为真，false/no/off/0 为假，大小写不论；没写、认不出都按默认当作开着
+    /// 节名、键名不分大小写（SI_NoCase），重复的后一个算；true/yes/on/1 为真，false/no/off/0 为假。没写、认不出都按默认当作开着
+    /// （SimpleIni 只看首字母，它认的写法比这里多，多出来的这里都当作开着，只会少重启、不会多重启）
     package static func lockOnDisconnect(config: String) -> Bool {
         var section = ""
         var value: Bool?
         for raw in config.split(whereSeparator: \.isNewline) {
             let line = raw.trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: "\u{FEFF}")))
             if line.hasPrefix("[") {
-                section = line.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+                section = line.trimmingCharacters(in: CharacterSet(charactersIn: "[]").union(.whitespaces)).lowercased()
                 continue
             }
-            guard section == "Settings", !line.hasPrefix(";"), !line.hasPrefix("#"), let equals = line.firstIndex(of: "="),
-                  line[..<equals].trimmingCharacters(in: .whitespaces) == "lock_on_disconnect" else { continue }
+            guard section == "settings", !line.hasPrefix(";"), !line.hasPrefix("#"), let equals = line.firstIndex(of: "="),
+                  line[..<equals].trimmingCharacters(in: .whitespaces).lowercased() == "lock_on_disconnect" else { continue }
             switch line[line.index(after: equals)...].trimmingCharacters(in: .whitespaces).lowercased() {
             case "true", "yes", "on", "1": value = true
             case "false", "no", "off", "0": value = false

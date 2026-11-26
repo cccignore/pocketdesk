@@ -34,13 +34,26 @@ package enum CrossDeskApp {
         }
     }
 
-    /// 它的「连接断开后锁屏」设置；读不到设置文件为 nil。它把设置放在 $XDG_CACHE_HOME/CrossDesk/config.ini，没设这个变量时是
-    /// ~/.cache/CrossDesk/config.ini（platform/macos/path_backend.cpp）。在设置里改了就写这个文件，所以读到的就是它此刻用的
-    package nonisolated static func lockOnDisconnect() -> Bool? {
-        let cache = ProcessInfo.processInfo.environment["XDG_CACHE_HOME"].map { URL(fileURLWithPath: $0) }
-            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache")
-        guard let text = try? String(contentsOf: cache.appendingPathComponent("CrossDesk/config.ini"), encoding: .utf8) else { return nil }
+    /// 这个进程的「连接断开后锁屏」设置；读不到它的环境变量、设置文件为 nil。文件在哪按它自己的环境变量定
+    /// （CrossDeskRestartCheck.configPath）。它在设置里改了先写文件、写成功才改内存（config_center.cpp），所以读到的就是它此刻用的
+    package nonisolated static func lockOnDisconnect(pid: pid_t) -> Bool? {
+        guard let environment = environment(of: pid), let path = CrossDeskRestartCheck.configPath(environment: environment),
+              let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
         return CrossDeskRestartCheck.lockOnDisconnect(config: text)
+    }
+
+    /// 另一个进程的环境变量（KEY=VALUE），同一个用户的进程读得到；读不到为 nil。
+    /// KERN_PROCARGS2 交回的是 argc（Int32），可执行文件路径，再是 argv、环境变量，都以 NUL 结尾、中间可能有补齐的 NUL
+    private nonisolated static func environment(of pid: pid_t) -> [String]? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        let argc = Int(buffer.withUnsafeBytes { $0.loadUnaligned(as: Int32.self) })
+        let strings = buffer[MemoryLayout<Int32>.size..<size].split(separator: 0).map { String(decoding: $0, as: UTF8.self) }
+        guard strings.count > argc else { return nil }
+        return Array(strings.dropFirst(1 + argc))
     }
 
     /// 装着的 CrossDesk 的版本；没装为 nil，装了读不到版本为「版本未知」
